@@ -3,6 +3,7 @@ import {
     addDoc,
     collection,
     doc,
+    getDoc,
     getDocs,
     getFirestore,
     limit,
@@ -98,6 +99,34 @@ class SideTracker {
         this.elements.connectSessionBtn.disabled = true;
 
         try {
+            const sessionId = await this.findSessionIdByCode(code);
+
+            if (!sessionId) {
+                this.setStatus('No matching session yet. Start Session on the glasses, then try again.');
+                return;
+            }
+
+            this.sessionId = sessionId;
+            this.sessionCode = code;
+            this.elements.startTrackingBtn.disabled = false;
+            this.setStatus(`Connected to session ${code}. Place this device on the athlete's side.`);
+        } catch (error) {
+            console.error(error);
+            this.setStatus(`Connect failed: ${error.code || error.message || 'check Firebase rules'}.`);
+        } finally {
+            this.elements.connectSessionBtn.disabled = false;
+        }
+    }
+
+    async findSessionIdByCode(code) {
+        for (let attempt = 1; attempt <= 5; attempt += 1) {
+            this.setStatus(`Looking for session ${code}...`);
+            const sessionCodeDoc = await getDoc(doc(this.db, 'sessionCodes', code));
+
+            if (sessionCodeDoc.exists()) {
+                return sessionCodeDoc.data().sessionId;
+            }
+
             const sessionsQuery = query(
                 collection(this.db, 'sessions'),
                 where('sessionCode', '==', code),
@@ -105,22 +134,20 @@ class SideTracker {
             );
             const snapshot = await getDocs(sessionsQuery);
 
-            if (snapshot.empty) {
-                this.setStatus('No matching session yet. Start the session on the glasses first.');
-                return;
+            if (!snapshot.empty) {
+                return snapshot.docs[0].id;
             }
 
-            const sessionDoc = snapshot.docs[0];
-            this.sessionId = sessionDoc.id;
-            this.sessionCode = code;
-            this.elements.startTrackingBtn.disabled = false;
-            this.setStatus(`Connected to session ${code}. Place this device on the athlete's side.`);
-        } catch (error) {
-            console.error(error);
-            this.setStatus('Could not connect to Firestore. Check Wi-Fi and Firebase rules.');
-        } finally {
-            this.elements.connectSessionBtn.disabled = false;
+            if (attempt < 5) {
+                await this.wait(700);
+            }
         }
+
+        return null;
+    }
+
+    wait(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     async startTracking() {

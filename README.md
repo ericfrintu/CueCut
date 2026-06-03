@@ -178,6 +178,7 @@ When Firebase is available, completed reps are also mirrored to Firestore:
 - **`sessions/{sessionId}`**: Session metadata, including the short session code shown on the Ready screen
 - **`sessions/{sessionId}/reps/{repId}`**: Individual rep timing data for that session
 - **`sessions/{sessionId}/trackingSamples/{sampleId}`**: Side-device pose samples, body-position metrics, and feedback
+- **`sessionCodes/{code}`**: Fast lookup record that lets the side tracker connect from the 4-digit code
 
 The dashboard still reads from local storage first, so the app stays usable if the network or Firebase is unavailable.
 

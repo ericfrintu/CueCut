@@ -446,6 +446,16 @@ class CloudStorage {
                 ...sessionMeta,
                 updatedAt: serverTimestamp()
             }, { merge: true });
+
+            if (sessionMeta.sessionCode) {
+                const sessionCodeRef = doc(db, 'sessionCodes', sessionMeta.sessionCode);
+                await setDoc(sessionCodeRef, {
+                    sessionId: sessionMeta.sessionId,
+                    sessionCode: sessionMeta.sessionCode,
+                    startedAt: sessionMeta.startedAt || null,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
         });
     }
 
@@ -462,6 +472,17 @@ class CloudStorage {
                 startedAt: sessionMeta.startedAt || null,
                 updatedAt: serverTimestamp()
             }, { merge: true });
+
+            if (sessionMeta.sessionCode || repData.sessionCode) {
+                const sessionCode = sessionMeta.sessionCode || repData.sessionCode;
+                const sessionCodeRef = doc(db, 'sessionCodes', sessionCode);
+                await setDoc(sessionCodeRef, {
+                    sessionId,
+                    sessionCode,
+                    startedAt: sessionMeta.startedAt || null,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+            }
 
             await setDoc(repRef, {
                 ...repData,
