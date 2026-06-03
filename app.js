@@ -352,8 +352,7 @@ class CueCutApp {
         document.getElementById('readyBackBtn').addEventListener('click', () => this.goToHome());
 
         // Movement Screen
-        document.getElementById('firstMovementBtn').addEventListener('click', () => this.markFirstMovement());
-        document.getElementById('finishBtn').addEventListener('click', () => this.markFinish());
+        document.getElementById('reactionBtn').addEventListener('click', () => this.markReaction());
         document.getElementById('correctBtn').addEventListener('click', () => this.markCorrect(true));
         document.getElementById('incorrectBtn').addEventListener('click', () => this.markCorrect(false));
 
@@ -594,7 +593,6 @@ class CueCutApp {
 
     goToMovementScreen() {
         document.getElementById('currentCueDisplay').innerHTML = `Cue: <strong>${this.currentRepData.cue}</strong>`;
-        document.getElementById('timingModeDisplay').textContent = `Timing: ${this.currentRepData.timingMode}`;
         this.updateMovementDisplay();
         this.goToScreen('movementScreen');
     }
@@ -603,32 +601,16 @@ class CueCutApp {
         if (this.currentRepData.reactionMs !== null) {
             document.getElementById('reactionTimeDisplay').textContent = `Reaction: ${(this.currentRepData.reactionMs / 1000).toFixed(2)}s`;
         }
-        if (this.currentRepData.movementMs !== null) {
-            document.getElementById('movementTimeDisplay').textContent = `Move: ${(this.currentRepData.movementMs / 1000).toFixed(2)}s`;
-        }
-        if (this.currentRepData.totalMs !== null) {
-            document.getElementById('totalTimeDisplay').textContent = `Total: ${(this.currentRepData.totalMs / 1000).toFixed(2)}s`;
-        }
     }
 
-    markFirstMovement() {
+    markReaction() {
         this.currentRepData.firstMovementMs = performance.now();
         this.currentRepData.calculateTimings();
         this.updateMovementDisplay();
         
         // Disable button
-        document.getElementById('firstMovementBtn').disabled = true;
-        document.getElementById('firstMovementBtn').style.opacity = '0.5';
-    }
-
-    markFinish() {
-        this.currentRepData.finishMs = performance.now();
-        this.currentRepData.calculateTimings();
-        this.updateMovementDisplay();
-
-        // Disable button
-        document.getElementById('finishBtn').disabled = true;
-        document.getElementById('finishBtn').style.opacity = '0.5';
+        document.getElementById('reactionBtn').disabled = true;
+        document.getElementById('reactionBtn').style.opacity = '0.5';
     }
 
     markCorrect(isCorrect) {
