@@ -37,6 +37,24 @@ const POSE_CONNECTIONS = [
     [14, 16]
 ];
 
+const POSE_LOADER_OPTIONS = [
+    {
+        scriptUrl: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs",
+        wasmUrl: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm",
+        modelUrl: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+    },
+    {
+        scriptUrl: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/vision_bundle.mjs",
+        wasmUrl: "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm",
+        modelUrl: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+    },
+    {
+        scriptUrl: "https://unpkg.com/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs",
+        wasmUrl: "https://unpkg.com/@mediapipe/tasks-vision@0.10.3/wasm",
+        modelUrl: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
+    }
+];
+
 class SideTracker {
     constructor() {
         this.db = getFirestore(initializeApp(firebaseConfig));
@@ -187,14 +205,29 @@ class SideTracker {
     async initializePoseLandmarker() {
         if (this.poseLandmarker) return;
 
-        const { FilesetResolver, PoseLandmarker } = await import(
-            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/vision_bundle.mjs"
-        );
+        const failures = [];
+
+        for (const [index, loaderOption] of POSE_LOADER_OPTIONS.entries()) {
+            this.setStatus(`Loading pose tracker ${index + 1}/${POSE_LOADER_OPTIONS.length}...`);
+
+            try {
+                await this.loadPoseLandmarker(loaderOption);
+                return;
+            } catch (error) {
+                failures.push(`${index + 1}: ${error?.message || error?.name || 'unknown'}`);
+                console.warn('Pose loader failed:', loaderOption.scriptUrl, error);
+            }
+        }
+
+        throw new Error(`all pose loaders failed (${failures.join('; ')})`);
+    }
+
+    async loadPoseLandmarker(loaderOption) {
+        const { FilesetResolver, PoseLandmarker } = await import(loaderOption.scriptUrl);
         this.PoseLandmarker = PoseLandmarker;
 
-        const vision = await FilesetResolver.forVisionTasks(
-            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
-        );
+        const vision = await FilesetResolver.forVisionTasks(loaderOption.wasmUrl);
+        this.currentPoseModelUrl = loaderOption.modelUrl;
 
         try {
             this.poseLandmarker = await this.createPoseLandmarker(vision, "GPU");
@@ -207,7 +240,7 @@ class SideTracker {
     async createPoseLandmarker(vision, delegate) {
         return this.PoseLandmarker.createFromOptions(vision, {
             baseOptions: {
-                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
+                modelAssetPath: this.currentPoseModelUrl,
                 delegate
             },
             runningMode: "VIDEO",
@@ -263,6 +296,10 @@ class SideTracker {
 
         if (!navigator.onLine) {
             return 'Pose tracking failed: device is offline.';
+        }
+
+        if (message.includes('all pose loaders failed')) {
+            return 'Pose tracking failed: model could not load. Try Wi-Fi or another browser.';
         }
 
         return `Pose tracking failed: ${name || message || 'could not load model'}.`;
