@@ -587,12 +587,103 @@ body {
 }
 
 .tracker-controls,
+.tracker-panel,
 .tracker-feedback {
     width: 100%;
     padding: 14px;
     background: rgba(0, 255, 0, 0.05);
     border: 1px solid rgba(0, 255, 0, 0.2);
     border-radius: 4px;
+}
+
+.tracker-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.tracker-panel-header h2 {
+    margin: 0;
+    color: #00ff00;
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.tracker-panel-header span {
+    color: #aaa;
+    font-size: 0.8rem;
+    text-align: right;
+}
+
+.run-tabs,
+.tracker-cue-settings {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.run-tab {
+    min-height: 42px;
+    padding: 8px;
+    border: 1px solid rgba(0, 255, 0, 0.4);
+    border-radius: 4px;
+    background: #030303;
+    color: #00ff00;
+    font: 700 0.8rem 'Courier New', monospace;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.run-tab.active,
+.run-tab:focus {
+    background: #00ff00;
+    color: #000;
+    outline: none;
+}
+
+.tracker-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.tracker-settings-grid label,
+.tracker-cue-settings label {
+    display: grid;
+    gap: 6px;
+    color: #aaa;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+}
+
+.tracker-settings-grid select,
+.tracker-settings-grid input {
+    width: 100%;
+    min-height: 40px;
+    padding: 8px;
+    border: 1px solid rgba(0, 255, 0, 0.5);
+    border-radius: 4px;
+    background: #050505;
+    color: #fff;
+    font: 700 0.9rem 'Courier New', monospace;
+}
+
+.tracker-cue-settings {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.tracker-cue-settings label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    border: 1px solid rgba(0, 255, 0, 0.25);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.35);
 }
 
 .tracker-label {
@@ -728,6 +819,15 @@ body {
     .tracker-connect-row,
     .tracker-actions {
         grid-template-columns: 1fr;
+    }
+
+    .run-tabs {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .tracker-settings-grid,
+    .tracker-cue-settings {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .tracker-camera {

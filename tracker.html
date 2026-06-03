@@ -27,6 +27,61 @@
             <p id="trackerStatus" class="small-text">Waiting for session code.</p>
         </section>
 
+        <section class="tracker-panel">
+            <div class="tracker-panel-header">
+                <h2>Run View</h2>
+                <span id="activeRepStatus">No active rep</span>
+            </div>
+            <div class="run-tabs" id="runTypeTabs">
+                <button class="run-tab active" data-run-type="AUTO">Auto</button>
+                <button class="run-tab" data-run-type="LEFT">Left</button>
+                <button class="run-tab" data-run-type="RIGHT">Right</button>
+                <button class="run-tab" data-run-type="DROP">Drop</button>
+                <button class="run-tab" data-run-type="TURN">Turn</button>
+                <button class="run-tab" data-run-type="GO">Go</button>
+            </div>
+        </section>
+
+        <section class="tracker-panel">
+            <div class="tracker-panel-header">
+                <h2>Session Settings</h2>
+                <span id="settingsSaveStatus">Session only</span>
+            </div>
+            <div class="tracker-settings-grid">
+                <label>
+                    Goal
+                    <select id="trackerGoalSelect">
+                        <option value="0">Open</option>
+                        <option value="5">5 reps</option>
+                        <option value="10">10 reps</option>
+                        <option value="20">20 reps</option>
+                    </select>
+                </label>
+                <label>
+                    Delay Min
+                    <input id="trackerDelayMin" type="number" min="0.5" max="3" step="0.1" value="1.0">
+                </label>
+                <label>
+                    Delay Max
+                    <input id="trackerDelayMax" type="number" min="0.5" max="5" step="0.1" value="3.0">
+                </label>
+                <label>
+                    Sound
+                    <select id="trackerAudioSelect">
+                        <option value="on">On</option>
+                        <option value="off">Off</option>
+                    </select>
+                </label>
+            </div>
+            <div class="tracker-cue-settings">
+                <label><input type="checkbox" class="trackerCueToggle" value="LEFT" checked> Left</label>
+                <label><input type="checkbox" class="trackerCueToggle" value="RIGHT" checked> Right</label>
+                <label><input type="checkbox" class="trackerCueToggle" value="DROP" checked> Drop</label>
+                <label><input type="checkbox" class="trackerCueToggle" value="TURN" checked> Turn</label>
+                <label><input type="checkbox" class="trackerCueToggle" value="GO" checked> Go</label>
+            </div>
+        </section>
+
         <section class="tracker-camera">
             <video id="trackerVideo" playsinline muted></video>
             <canvas id="trackerCanvas"></canvas>
@@ -59,6 +114,6 @@
         </section>
     </main>
 
-    <script type="module" src="tracker.js?v=5"></script>
+    <script type="module" src="tracker.js?v=6"></script>
 </body>
 </html>

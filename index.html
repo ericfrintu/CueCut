@@ -19,7 +19,6 @@
                     <button id="startSessionBtn" class="nav-button focusable" tabindex="0">Start Session</button>
                     <button id="viewDataBtn" class="nav-button focusable" tabindex="0">View Data</button>
                     <button id="viewScoresBtn" class="nav-button focusable" tabindex="0">Scores</button>
-                    <button id="settingsBtn" class="nav-button focusable" tabindex="0">Settings</button>
                 </nav>
                 <div class="status-bar">
                     <span id="motionStatus">Motion: checking...</span>
@@ -75,6 +74,7 @@
                     <p><strong>Cue:</strong> <span id="feedbackCue">—</span></p>
                     <p><strong>Reaction:</strong> <span id="feedbackReaction">—</span></p>
                     <p><strong>Score:</strong> <span id="feedbackScoreNote">—</span></p>
+                    <p><strong>Coach:</strong> <span id="feedbackCoachNote">Waiting for phone data...</span></p>
                 </div>
                 <nav class="nav-menu">
                     <button id="nextRepBtn" class="action-button focusable" tabindex="0">Next Rep</button>
@@ -196,7 +196,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
         import { getAnalytics, isSupported } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-analytics.js";
-        import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+        import { getFirestore, doc, onSnapshot, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyA6EnXXEkawDg7y8yLW52UYp0uheD1JLQQ",
@@ -220,6 +220,7 @@
         window.CueCutFirebase = {
             db,
             doc,
+            onSnapshot,
             setDoc,
             serverTimestamp
         };

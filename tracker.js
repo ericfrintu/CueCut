@@ -7,6 +7,7 @@ import {
     getDocs,
     getFirestore,
     limit,
+    onSnapshot,
     query,
     serverTimestamp,
     setDoc,
@@ -63,6 +64,9 @@ class SideTracker {
         this.stream = null;
         this.poseLandmarker = null;
         this.PoseLandmarker = null;
+        this.sessionUnsubscribe = null;
+        this.activeRep = null;
+        this.selectedRunType = 'AUTO';
         this.isTracking = false;
         this.isPoseReady = false;
         this.poseErrorShown = false;
@@ -81,7 +85,15 @@ class SideTracker {
             bodyFeedback: document.getElementById('bodyFeedback'),
             leanMetric: document.getElementById('leanMetric'),
             kneeMetric: document.getElementById('kneeMetric'),
-            baseMetric: document.getElementById('baseMetric')
+            baseMetric: document.getElementById('baseMetric'),
+            activeRepStatus: document.getElementById('activeRepStatus'),
+            settingsSaveStatus: document.getElementById('settingsSaveStatus'),
+            trackerGoalSelect: document.getElementById('trackerGoalSelect'),
+            trackerDelayMin: document.getElementById('trackerDelayMin'),
+            trackerDelayMax: document.getElementById('trackerDelayMax'),
+            trackerAudioSelect: document.getElementById('trackerAudioSelect'),
+            trackerCueToggles: document.querySelectorAll('.trackerCueToggle'),
+            runTabs: document.querySelectorAll('.run-tab')
         };
 
         this.canvasContext = this.elements.trackerCanvas.getContext('2d');
@@ -98,6 +110,18 @@ class SideTracker {
         });
         this.elements.sessionCodeInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') this.connectSession();
+        });
+        this.elements.runTabs.forEach(button => {
+            button.addEventListener('click', () => this.selectRunType(button.dataset.runType));
+        });
+        [
+            this.elements.trackerGoalSelect,
+            this.elements.trackerDelayMin,
+            this.elements.trackerDelayMax,
+            this.elements.trackerAudioSelect,
+            ...this.elements.trackerCueToggles
+        ].forEach(element => {
+            element.addEventListener('change', () => this.saveSessionSettings());
         });
     }
 
@@ -126,6 +150,7 @@ class SideTracker {
             this.sessionId = sessionId;
             this.sessionCode = code;
             this.elements.startTrackingBtn.disabled = false;
+            this.subscribeToSession();
             this.setStatus(`Connected to session ${code}. Place this device on the athlete's side.`);
         } catch (error) {
             console.error(error);
@@ -165,6 +190,101 @@ class SideTracker {
 
     wait(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    subscribeToSession() {
+        if (this.sessionUnsubscribe) {
+            this.sessionUnsubscribe();
+        }
+
+        this.sessionUnsubscribe = onSnapshot(doc(this.db, 'sessions', this.sessionId), snapshot => {
+            if (!snapshot.exists()) return;
+            const sessionData = snapshot.data();
+            this.handleSessionUpdate(sessionData);
+        }, error => {
+            console.warn('Tracker session listener failed:', error);
+            this.setStatus(`Live session sync failed: ${error.code || 'check rules'}.`);
+        });
+    }
+
+    handleSessionUpdate(sessionData) {
+        this.activeRep = sessionData.activeRep?.status === 'active' ? sessionData.activeRep : null;
+        this.updateActiveRepStatus();
+
+        if (sessionData.sessionSettings) {
+            this.loadSessionSettings(sessionData.sessionSettings);
+        }
+    }
+
+    updateActiveRepStatus() {
+        if (!this.activeRep) {
+            this.elements.activeRepStatus.textContent = 'Waiting for active rep';
+            return;
+        }
+
+        this.elements.activeRepStatus.textContent = `Recording ${this.activeRep.cue}`;
+    }
+
+    selectRunType(runType) {
+        this.selectedRunType = runType;
+        this.elements.runTabs.forEach(button => {
+            button.classList.toggle('active', button.dataset.runType === runType);
+        });
+    }
+
+    getEffectiveRunType() {
+        if (this.selectedRunType === 'AUTO') {
+            return this.activeRep?.cue || 'AUTO';
+        }
+        return this.selectedRunType;
+    }
+
+    loadSessionSettings(sessionSettings) {
+        this.elements.trackerGoalSelect.value = String(sessionSettings.sessionGoalReps ?? 0);
+        this.elements.trackerDelayMin.value = sessionSettings.delayMin ?? 1.0;
+        this.elements.trackerDelayMax.value = sessionSettings.delayMax ?? 3.0;
+        this.elements.trackerAudioSelect.value = sessionSettings.audioEnabled === false ? 'off' : 'on';
+
+        const enabledCues = Array.isArray(sessionSettings.enabledCues) ? sessionSettings.enabledCues : ['LEFT', 'RIGHT', 'DROP', 'TURN', 'GO'];
+        this.elements.trackerCueToggles.forEach(toggle => {
+            toggle.checked = enabledCues.includes(toggle.value);
+        });
+    }
+
+    saveSessionSettings() {
+        if (!this.sessionId) {
+            this.elements.settingsSaveStatus.textContent = 'Connect first';
+            return;
+        }
+
+        const enabledCues = [...this.elements.trackerCueToggles]
+            .filter(toggle => toggle.checked)
+            .map(toggle => toggle.value);
+        const safeCues = enabledCues.length ? enabledCues : ['GO'];
+        const delayMin = parseFloat(this.elements.trackerDelayMin.value);
+        const delayMax = parseFloat(this.elements.trackerDelayMax.value);
+        const sessionSettings = {
+            audioEnabled: this.elements.trackerAudioSelect.value === 'on',
+            timingMode: 'manual',
+            speechRate: 1.0,
+            sessionGoalReps: parseInt(this.elements.trackerGoalSelect.value, 10),
+            delayMin: Number.isFinite(delayMin) ? delayMin : 1.0,
+            delayMax: Number.isFinite(delayMax) ? Math.max(delayMax, delayMin || 1.0) : 3.0,
+            enabledCues: safeCues
+        };
+
+        this.elements.settingsSaveStatus.textContent = 'Saving...';
+        setDoc(doc(this.db, 'sessions', this.sessionId), {
+            sessionSettings,
+            updatedAt: serverTimestamp()
+        }, { merge: true })
+            .then(() => {
+                this.elements.settingsSaveStatus.textContent = 'Saved for session';
+            })
+            .catch(error => {
+                console.warn('Session settings save failed:', error);
+                this.elements.settingsSaveStatus.textContent = 'Save failed';
+            });
     }
 
     async startTracking() {
@@ -344,7 +464,8 @@ class SideTracker {
         }
 
         const metrics = this.calculateMetrics(landmarks);
-        const feedback = this.buildFeedback(metrics);
+        const runType = this.getEffectiveRunType();
+        const feedback = this.buildFeedback(metrics, runType);
 
         this.elements.bodyFeedback.textContent = feedback.message;
         this.elements.leanMetric.textContent = `${metrics.trunkLeanDeg.toFixed(1)} deg`;
@@ -353,7 +474,7 @@ class SideTracker {
 
         if (performance.now() - this.lastSaveMs > 1000) {
             this.lastSaveMs = performance.now();
-            this.saveTrackingSample(metrics, feedback);
+            this.saveTrackingSample(metrics, feedback, runType);
         }
     }
 
@@ -408,15 +529,19 @@ class SideTracker {
         };
     }
 
-    buildFeedback(metrics) {
+    buildFeedback(metrics, runType = 'AUTO') {
         const notes = [];
+        const good = [];
 
         if (metrics.poseScore < 0.45) {
             return {
                 message: 'Body partly out of frame.',
+                good: 'camera connected',
+                fix: 'step fully into frame',
                 leanLabel: 'low confidence',
                 kneeLabel: 'low confidence',
-                baseLabel: 'low confidence'
+                baseLabel: 'low confidence',
+                runType
             };
         }
 
@@ -427,6 +552,8 @@ class SideTracker {
         } else if (metrics.trunkLeanDeg > 32) {
             leanLabel = 'over leaning';
             notes.push('Control the lean');
+        } else {
+            good.push('lean');
         }
 
         let kneeLabel = 'athletic bend';
@@ -436,6 +563,8 @@ class SideTracker {
         } else if (metrics.kneeAngleDeg < 120) {
             kneeLabel = 'very deep';
             notes.push('Rise slightly');
+        } else {
+            good.push('knee bend');
         }
 
         let baseLabel = 'stable base';
@@ -445,22 +574,38 @@ class SideTracker {
         } else if (metrics.stanceWidthPct > 24) {
             baseLabel = 'wide base';
             notes.push('Narrow base');
+        } else {
+            good.push('base');
+        }
+
+        if (runType === 'TURN' && metrics.trunkLeanDeg < 12) {
+            notes.push('Load turn angle');
+        }
+
+        if ((runType === 'LEFT' || runType === 'RIGHT') && metrics.stanceWidthPct < 8) {
+            notes.push('Push from wider base');
         }
 
         return {
             message: notes.length ? notes.join(' + ') : 'Good athletic position',
+            good: good.length ? good.join(', ') : 'effort and camera view',
+            fix: notes.length ? notes.join(', ') : 'keep same shape',
             leanLabel,
             kneeLabel,
-            baseLabel
+            baseLabel,
+            runType
         };
     }
 
-    async saveTrackingSample(metrics, feedback) {
-        if (!this.sessionId) return;
+    async saveTrackingSample(metrics, feedback, runType) {
+        if (!this.sessionId || !this.activeRep?.repId) return;
 
         const sample = {
             sessionId: this.sessionId,
             sessionCode: this.sessionCode,
+            repId: this.activeRep.repId,
+            cue: this.activeRep.cue,
+            runType,
             metrics,
             feedback,
             source: 'side-tracker',
@@ -468,9 +613,12 @@ class SideTracker {
         };
 
         try {
-            await addDoc(collection(this.db, 'sessions', this.sessionId, 'trackingSamples'), sample);
+            await addDoc(collection(this.db, 'sessions', this.sessionId, 'reps', this.activeRep.repId, 'trackingSamples'), sample);
             await setDoc(doc(this.db, 'sessions', this.sessionId), {
                 latestTrackingFeedback: {
+                    repId: this.activeRep.repId,
+                    cue: this.activeRep.cue,
+                    runType,
                     metrics,
                     feedback,
                     source: 'side-tracker',

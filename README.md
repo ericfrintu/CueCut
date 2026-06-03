@@ -177,14 +177,18 @@ When Firebase is available, completed reps are also mirrored to Firestore:
 
 - **`sessions/{sessionId}`**: Session metadata, including the short session code shown on the Ready screen
 - **`sessions/{sessionId}/reps/{repId}`**: Individual rep timing data for that session
-- **`sessions/{sessionId}/trackingSamples/{sampleId}`**: Side-device pose samples, body-position metrics, and feedback
+- **`sessions/{sessionId}/reps/{repId}/trackingSamples/{sampleId}`**: Side-device pose samples captured only while that rep is active
 - **`sessionCodes/{code}`**: Fast lookup record that lets the side tracker connect from the 4-digit code
+- **`sessions/{sessionId}.activeRep`**: Live rep window used to start/stop side-device recording
+- **`sessions/{sessionId}.sessionSettings`**: Phone-controlled settings for the current session only
 
 The dashboard still reads from local storage first, so the app stays usable if the network or Firebase is unavailable.
 
 ### Side Tracker
 
-Open `/tracker.html` on a phone or laptop placed to the athlete's side. Enter the 4-digit session code shown on the glasses app, start the camera, and the tracker will save body-position samples to the same Firestore session.
+Open `/tracker.html` on a phone or laptop placed to the athlete's side. Enter the 4-digit session code shown on the glasses app, start the camera, choose the run view/angle, and the tracker will save body-position samples only during active reps.
+
+Session settings are adjusted from the tracker page and apply to that connected session only.
 
 The tracker uses browser camera access and MediaPipe Pose Landmarker, so it must run on HTTPS or localhost.
 

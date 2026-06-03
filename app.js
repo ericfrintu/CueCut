@@ -490,6 +490,39 @@ class CloudStorage {
             }, { merge: true });
         });
     }
+
+    updateActiveRep(sessionId, activeRep) {
+        this.queueTask(async () => {
+            const { db, doc, setDoc, serverTimestamp } = this.firebase;
+            await setDoc(doc(db, 'sessions', sessionId), {
+                activeRep,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+        });
+    }
+
+    saveSessionSettings(sessionId, sessionSettings) {
+        this.queueTask(async () => {
+            const { db, doc, setDoc, serverTimestamp } = this.firebase;
+            await setDoc(doc(db, 'sessions', sessionId), {
+                sessionSettings,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+        });
+    }
+
+    subscribeToSession(sessionId, callback) {
+        if (!this.isAvailable || !this.firebase.onSnapshot) {
+            return null;
+        }
+
+        const { db, doc, onSnapshot } = this.firebase;
+        return onSnapshot(doc(db, 'sessions', sessionId), snapshot => {
+            if (snapshot.exists()) {
+                callback(snapshot.data());
+            }
+        }, error => console.warn('Session realtime sync failed:', error));
+    }
 }
 
 // ============================================================================
@@ -510,6 +543,8 @@ class CueCutApp {
         this.currentSummarySessionId = null;
         this.currentDataSessionId = null;
         this.currentFeedbackScoreNote = null;
+        this.currentCoachFeedback = null;
+        this.sessionUnsubscribe = null;
         this.currentScreen = 'homeScreen';
         this.focusedButton = null;
 
@@ -528,7 +563,10 @@ class CueCutApp {
         document.getElementById('startSessionBtn').addEventListener('click', () => this.startSession());
         document.getElementById('viewDataBtn').addEventListener('click', () => this.viewData());
         document.getElementById('viewScoresBtn').addEventListener('click', () => this.viewScores());
-        document.getElementById('settingsBtn').addEventListener('click', () => this.goToScreen('settingsScreen'));
+        const settingsBtn = document.getElementById('settingsBtn');
+        if (settingsBtn) {
+            settingsBtn.addEventListener('click', () => this.goToScreen('settingsScreen'));
+        }
 
         // Ready Screen
         document.getElementById('startRepBtn').addEventListener('click', () => this.startRep());
@@ -730,13 +768,81 @@ class CueCutApp {
         this.currentSessionId = `session_${Date.now()}`;
         this.currentSessionCode = this.generateSessionCode();
         this.currentSummarySessionId = this.currentSessionId;
+        this.currentCoachFeedback = null;
         this.cloud.saveSession({
             sessionId: this.currentSessionId,
             sessionCode: this.currentSessionCode,
             startedAt: new Date().toISOString(),
+            sessionSettings: this.getSessionSettingsSnapshot(),
             source: 'glasses'
         });
+        this.subscribeToCurrentSession();
         this.goToReady();
+    }
+
+    getSessionSettingsSnapshot() {
+        return {
+            audioEnabled: this.settings.get('audioEnabled'),
+            timingMode: this.settings.get('timingMode'),
+            speechRate: this.settings.get('speechRate'),
+            sessionGoalReps: this.settings.get('sessionGoalReps'),
+            delayMin: this.settings.get('delayMin'),
+            delayMax: this.settings.get('delayMax'),
+            enabledCues: this.settings.get('enabledCues')
+        };
+    }
+
+    subscribeToCurrentSession() {
+        if (!this.currentSessionId) return;
+
+        if (this.sessionUnsubscribe) {
+            this.sessionUnsubscribe();
+            this.sessionUnsubscribe = null;
+        }
+
+        const unsubscribe = this.cloud.subscribeToSession(this.currentSessionId, sessionData => this.handleSessionUpdate(sessionData));
+        if (unsubscribe) {
+            this.sessionUnsubscribe = unsubscribe;
+            return;
+        }
+
+        window.addEventListener('cuecut:firebase-ready', () => {
+            if (!this.sessionUnsubscribe && this.currentSessionId) {
+                this.sessionUnsubscribe = this.cloud.subscribeToSession(
+                    this.currentSessionId,
+                    sessionData => this.handleSessionUpdate(sessionData)
+                );
+            }
+        }, { once: true });
+    }
+
+    handleSessionUpdate(sessionData) {
+        if (sessionData.sessionSettings) {
+            this.applySessionSettings(sessionData.sessionSettings);
+        }
+
+        const latestFeedback = sessionData.latestTrackingFeedback;
+        if (latestFeedback?.repId && latestFeedback.repId === this.currentRepData?.id) {
+            this.currentCoachFeedback = latestFeedback;
+            this.updateCoachFeedbackDisplay();
+        }
+    }
+
+    applySessionSettings(sessionSettings) {
+        const cleaned = {};
+
+        if (typeof sessionSettings.audioEnabled === 'boolean') cleaned.audioEnabled = sessionSettings.audioEnabled;
+        if (['manual', 'motion'].includes(sessionSettings.timingMode)) cleaned.timingMode = sessionSettings.timingMode;
+        if (Number.isFinite(sessionSettings.speechRate)) cleaned.speechRate = sessionSettings.speechRate;
+        if (Number.isFinite(sessionSettings.sessionGoalReps)) cleaned.sessionGoalReps = sessionSettings.sessionGoalReps;
+        if (Number.isFinite(sessionSettings.delayMin)) cleaned.delayMin = sessionSettings.delayMin;
+        if (Number.isFinite(sessionSettings.delayMax)) cleaned.delayMax = sessionSettings.delayMax;
+        if (Array.isArray(sessionSettings.enabledCues)) {
+            const validCues = sessionSettings.enabledCues.filter(cue => CUE_BANK.includes(cue));
+            if (validCues.length > 0) cleaned.enabledCues = validCues;
+        }
+
+        this.settings.data = { ...this.settings.data, ...cleaned };
     }
 
     generateSessionCode() {
@@ -778,6 +884,14 @@ class CueCutApp {
 
     showCue() {
         this.currentRepData.cueStartMs = performance.now();
+        this.currentCoachFeedback = null;
+        this.cloud.updateActiveRep(this.currentSessionId, {
+            repId: this.currentRepData.id,
+            cue: this.currentRepData.cue,
+            sessionCode: this.currentSessionCode,
+            status: 'active',
+            cueStartedAt: new Date().toISOString()
+        });
         
         // Update UI
         document.getElementById('cueDisplay').textContent = this.currentRepData.cue;
@@ -817,6 +931,14 @@ class CueCutApp {
 
         this.currentFeedbackScoreNote = this.getScoreNoteForRep(this.currentRepData);
         this.storage.saveRep(this.currentRepData);
+        this.cloud.updateActiveRep(this.currentSessionId, {
+            repId: this.currentRepData.id,
+            cue: this.currentRepData.cue,
+            sessionCode: this.currentSessionCode,
+            status: 'finished',
+            finishedAt: new Date().toISOString(),
+            reactionMs: this.currentRepData.reactionMs
+        });
         this.cloud.saveRep(this.currentRepData, {
             sessionCode: this.currentSessionCode,
             startedAt: this.getSessionStartedAt(this.currentSessionId)
@@ -843,8 +965,27 @@ class CueCutApp {
         document.getElementById('feedbackCue').textContent = rep.cue;
         document.getElementById('feedbackReaction').textContent = rep.reactionMs !== null ? `${(rep.reactionMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('feedbackScoreNote').textContent = this.currentFeedbackScoreNote || '—';
+        this.updateCoachFeedbackDisplay();
 
         this.goToScreen('feedbackScreen');
+    }
+
+    updateCoachFeedbackDisplay() {
+        const coachEl = document.getElementById('feedbackCoachNote');
+        if (!coachEl) return;
+
+        if (!this.currentCoachFeedback?.feedback) {
+            coachEl.textContent = 'Waiting for phone data...';
+            return;
+        }
+
+        const feedback = this.currentCoachFeedback.feedback;
+        const runType = this.currentCoachFeedback.runType || this.currentCoachFeedback.cue || 'run';
+        const message = feedback.good
+            ? `Good: ${feedback.good}. Fix: ${feedback.fix}.`
+            : feedback.message;
+
+        coachEl.textContent = `${runType}: ${message}`;
     }
 
     getScoreNoteForRep(rep) {
@@ -883,6 +1024,12 @@ class CueCutApp {
     endSession() {
         // Get stats for only this session's reps
         this.currentSummarySessionId = this.currentSessionId;
+        if (this.currentSessionId) {
+            this.cloud.updateActiveRep(this.currentSessionId, {
+                status: 'session-ended',
+                endedAt: new Date().toISOString()
+            });
+        }
         const sessionReps = this.storage.getRepsBySession(this.currentSessionId);
         const stats = this.calculateSessionStats(sessionReps);
         this.showSummary(stats, sessionReps);
