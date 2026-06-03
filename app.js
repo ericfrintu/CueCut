@@ -387,6 +387,7 @@ class CueCutApp {
 
         // Data View Screen
         document.getElementById('dataViewExportBtn').addEventListener('click', () => this.exportCurrentDataView());
+        document.getElementById('clearHistoryBtn').addEventListener('click', () => this.clearHistory());
         document.getElementById('dataViewHomeBtn').addEventListener('click', () => this.goToHome());
 
         // Scores Screen
@@ -819,6 +820,7 @@ class CueCutApp {
         const exportButton = document.getElementById('dataViewExportBtn');
         if (exportButton) {
             exportButton.style.display = 'none';
+            exportButton.textContent = 'Export';
         }
 
         if (Object.keys(sessions).length === 0) {
@@ -890,6 +892,18 @@ class CueCutApp {
             backButton.addEventListener('click', () => this.viewData());
             backButton.focus();
         }
+    }
+
+    clearHistory() {
+        if (!confirm('Clear all stored data sessions? This cannot be undone.')) {
+            return;
+        }
+
+        this.storage.deleteAll();
+        this.currentDataSessionId = null;
+        this.currentSummarySessionId = null;
+        this.updateSessionCount();
+        this.viewData();
     }
 
     formatSessionDate(sessionId, sessionReps = []) {
