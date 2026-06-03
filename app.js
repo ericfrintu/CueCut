@@ -681,7 +681,6 @@ class CueCutApp {
         document.getElementById('summaryReps').textContent = stats.totalReps;
         document.getElementById('summaryAvgReaction').textContent = stats.avgReactionMs > 0 ? `${(stats.avgReactionMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('summaryBestReaction').textContent = stats.bestReactionMs > 0 ? `${(stats.bestReactionMs / 1000).toFixed(2)}s` : '—';
-        document.getElementById('summaryAvgMove').textContent = stats.avgMovementMs > 0 ? `${(stats.avgMovementMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('summaryAccuracy').textContent = stats.totalReps > 0 ? `${stats.totalAccuracy.toFixed(1)}%` : '—';
 
         this.drawChart(sessionReps);
@@ -744,7 +743,7 @@ class CueCutApp {
             let html = '<div class="sessions-list">';
             
             // Sort sessions by ID (newest first)
-            Object.keys(sessions).sort().reverse().forEach(sessionId => {
+            this.getSessionIdsNewestFirst(sessions).forEach(sessionId => {
                 const sessionReps = sessions[sessionId];
                 const repsCount = sessionReps.length;
                 const reactionTimes = sessionReps.filter(r => r.reactionMs !== null);
@@ -817,7 +816,7 @@ class CueCutApp {
         } else {
             let html = '<div class="sessions-list">';
 
-            Object.keys(sessions).sort().reverse().forEach(sessionId => {
+            this.getSessionIdsNewestFirst(sessions).forEach(sessionId => {
                 const sessionReps = sessions[sessionId];
                 const repsCount = sessionReps.length;
                 const reactionTimes = sessionReps.filter(rep => rep.reactionMs !== null);
@@ -884,15 +883,30 @@ class CueCutApp {
     }
 
     formatSessionDate(sessionId, sessionReps = []) {
-        const sessionTimestamp = parseInt(String(sessionId).split('_')[1], 10);
-        const fallbackTimestamp = sessionReps[0] ? Date.parse(sessionReps[0].timestamp) : NaN;
-        const timestamp = Number.isFinite(sessionTimestamp) ? sessionTimestamp : fallbackTimestamp;
+        const timestamp = this.getSessionTimestamp(sessionId, sessionReps);
 
         if (!Number.isFinite(timestamp)) {
             return 'Unknown Session';
         }
 
         return new Date(timestamp).toLocaleString();
+    }
+
+    getSessionIdsNewestFirst(sessions) {
+        return Object.keys(sessions).sort((a, b) => {
+            return this.getSessionTimestamp(b, sessions[b]) - this.getSessionTimestamp(a, sessions[a]);
+        });
+    }
+
+    getSessionTimestamp(sessionId, sessionReps = []) {
+        const sessionTimestamp = parseInt(String(sessionId).split('_')[1], 10);
+        const fallbackTimestamp = sessionReps[0] ? Date.parse(sessionReps[0].timestamp) : NaN;
+
+        if (Number.isFinite(sessionTimestamp)) {
+            return sessionTimestamp;
+        }
+
+        return Number.isFinite(fallbackTimestamp) ? fallbackTimestamp : 0;
     }
 
     exportCurrentSessionData() {
