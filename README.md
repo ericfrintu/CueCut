@@ -9,7 +9,7 @@ CueCut is a Stanford final project designed to explore auditory-motor coupling i
 ### Core Features
 
 - **Real-Time Cue Display**: Large, high-contrast text optimized for wearable AR display
-- **Audio-Visual Feedback**: Speech synthesis cues with optional sound playback
+- **Audio-Visual Feedback**: Tone-based cue sounds with spoken timing feedback
 - **Timing Measurement**: Manual or motion-sensor-based reaction/movement time tracking
 - **Session Tracking**: Automatic data logging with localStorage persistence
 - **CSV Export**: Export all rep data for analysis in spreadsheet tools
@@ -113,7 +113,12 @@ The app is now running locally. Use your **browser or keyboard** to test:
 ### Cue Screen
 
 - **Large, high-contrast cue text** (5rem font, green color, text-shadow glow)
-- Audio playback of cue word
+- Tone playback for each cue:
+  - GO: high-pitched beep
+  - LEFT: left-panned beep
+  - RIGHT: right-panned beep
+  - TURN: low-pitched tone
+  - DROP: double medium-pitched beep
 - Reaction timer starts at this moment
 
 ### Movement Screen
@@ -375,7 +380,7 @@ music257final/
 - **`RepData`**: Data model for a single rep (cue, timings, metadata)
 - **`Settings`**: Manages app configuration via localStorage
 - **`MotionDetector`**: Handles motion sensor permissions and accelerometer events
-- **`AudioFeedback`**: Wraps Web Speech API for cue and feedback audio
+- **`AudioFeedback`**: Uses Web Audio cue tones and Web Speech timing feedback
 - **`DataStorage`**: Manages localStorage for reps, stats calculations, CSV export
 - **`CueCutApp`**: Main controller; orchestrates UI, navigation, and rep flow
 
@@ -415,7 +420,7 @@ music257final/
 
 - Check Settings → **Audio** is toggled **On**
 - Verify browser speakers/headphones work
-- Some browsers disable Web Speech API on certain pages; refresh
+- Some browsers require a user interaction before generated audio can play; start a rep and refresh if needed
 - Speech synthesis may not be available in some languages/locales
 
 ### Data not saving

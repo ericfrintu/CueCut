@@ -213,18 +213,19 @@ class AudioFeedback {
         this.settings = settings;
         this.synth = window.speechSynthesis;
         this.isSupported = !!this.synth;
+        this.audioContext = null;
     }
 
     playCue(cueText) {
-        if (!this.settings.get('audioEnabled') || !this.isSupported) return;
+        if (!this.settings.get('audioEnabled')) return;
 
-        const utterance = new SpeechSynthesisUtterance(cueText);
-        utterance.rate = this.settings.get('speechRate');
-        utterance.pitch = 1.0;
-        utterance.volume = 1.0;
+        const pattern = this.getCuePattern(cueText);
+        if (!pattern) return;
 
-        this.synth.cancel();
-        this.synth.speak(utterance);
+        if (this.synth) {
+            this.synth.cancel();
+        }
+        this.playTonePattern(pattern);
     }
 
     playFeedback(text) {
@@ -240,7 +241,76 @@ class AudioFeedback {
     }
 
     stop() {
-        this.synth.cancel();
+        if (this.synth) {
+            this.synth.cancel();
+        }
+    }
+
+    getAudioContext() {
+        if (!this.audioContext) {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) return null;
+            this.audioContext = new AudioContextClass();
+        }
+
+        if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+        }
+
+        return this.audioContext;
+    }
+
+    getCuePattern(cueText) {
+        const patterns = {
+            GO: [{ frequency: 1320, duration: 0.18, pan: 0 }],
+            LEFT: [{ frequency: 720, duration: 0.16, pan: -1 }],
+            RIGHT: [{ frequency: 720, duration: 0.16, pan: 1 }],
+            TURN: [{ frequency: 220, duration: 0.3, pan: 0 }],
+            DROP: [
+                { frequency: 560, duration: 0.12, pan: 0 },
+                { frequency: 560, duration: 0.12, pan: 0, delay: 0.18 }
+            ]
+        };
+
+        return patterns[cueText] || null;
+    }
+
+    playTonePattern(pattern) {
+        const context = this.getAudioContext();
+        if (!context) return;
+
+        pattern.forEach(tone => {
+            const startTime = context.currentTime + (tone.delay || 0);
+            this.playTone(context, tone.frequency, tone.duration, tone.pan, startTime);
+        });
+    }
+
+    playTone(context, frequency, duration, pan, startTime) {
+        const oscillator = context.createOscillator();
+        const gainNode = context.createGain();
+        const panner = typeof context.createStereoPanner === 'function'
+            ? context.createStereoPanner()
+            : null;
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(frequency, startTime);
+
+        gainNode.gain.setValueAtTime(0.0001, startTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.35, startTime + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+        if (panner) {
+            panner.pan.setValueAtTime(pan, startTime);
+            oscillator.connect(gainNode);
+            gainNode.connect(panner);
+            panner.connect(context.destination);
+        } else {
+            oscillator.connect(gainNode);
+            gainNode.connect(context.destination);
+        }
+
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration + 0.03);
     }
 }
 
