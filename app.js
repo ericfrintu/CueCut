@@ -390,6 +390,7 @@ class CueCutApp {
         document.getElementById('dataViewHomeBtn').addEventListener('click', () => this.goToHome());
 
         // Scores Screen
+        document.getElementById('resetScoresBtn').addEventListener('click', () => this.resetScores());
         document.getElementById('scoresHomeBtn').addEventListener('click', () => this.goToHome());
 
         // Settings
@@ -950,6 +951,18 @@ class CueCutApp {
         html += '</tbody></table>';
         container.innerHTML = html;
         this.goToScreen('scoresScreen');
+    }
+
+    resetScores() {
+        if (!confirm('Reset all scores and stored reps? This cannot be undone.')) {
+            return;
+        }
+
+        this.storage.deleteAll();
+        this.currentDataSessionId = null;
+        this.currentSummarySessionId = null;
+        this.updateSessionCount();
+        this.viewScores();
     }
 
     getTopScoresByCue() {
