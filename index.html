@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="CueCut - Soccer Reaction HUD for Meta Ray-Ban Display">
+    <meta name="theme-color" content="#000000">
+    <title>CueCut - Soccer Reaction HUD</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app" class="app-container">
+        <!-- Home Screen -->
+        <div id="homeScreen" class="screen active">
+            <div class="screen-content">
+                <h1 class="title">CueCut</h1>
+                <p class="subtitle">Soccer Reaction HUD</p>
+                <nav class="nav-menu">
+                    <button id="startSessionBtn" class="nav-button focusable" tabindex="0">Start Session</button>
+                    <button id="viewDataBtn" class="nav-button focusable" tabindex="0">View Data</button>
+                    <button id="settingsBtn" class="nav-button focusable" tabindex="0">Settings</button>
+                </nav>
+                <div class="status-bar">
+                    <span id="motionStatus">Motion: checking...</span>
+                    <span id="sessionCount">Reps: 0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ready Screen -->
+        <div id="readyScreen" class="screen">
+            <div class="screen-content">
+                <h2 class="cue-text">READY</h2>
+                <p class="instruction">Hold still</p>
+                <button id="startRepBtn" class="action-button focusable" tabindex="0">Press to Start Rep</button>
+                <button id="readyBackBtn" class="back-button focusable" tabindex="0">← Back</button>
+            </div>
+        </div>
+
+        <!-- Waiting Screen -->
+        <div id="waitingScreen" class="screen">
+            <div class="screen-content">
+                <div id="waitingStatus" class="status-text">WAIT...</div>
+                <div id="waitingDots" class="dots"></div>
+            </div>
+        </div>
+
+        <!-- Cue Screen -->
+        <div id="cueScreen" class="screen">
+            <div class="screen-content">
+                <div id="cueDisplay" class="cue-text">—</div>
+                <div id="cueSubtext" class="cue-subtext">Ready</div>
+            </div>
+        </div>
+
+        <!-- Movement Detection / Manual Timing Screen -->
+        <div id="movementScreen" class="screen">
+            <div class="screen-content">
+                <div class="movement-info">
+                    <p id="currentCueDisplay" class="small-text">Cue: <strong>—</strong></p>
+                    <p id="timingModeDisplay" class="small-text">Timing: manual</p>
+                </div>
+                <nav class="movement-menu">
+                    <button id="firstMovementBtn" class="action-button focusable" tabindex="0">Mark First Movement (↓)</button>
+                    <button id="finishBtn" class="action-button focusable" tabindex="0">Mark Finish (↓)</button>
+                    <button id="correctBtn" class="action-button focusable" tabindex="0">Correct (→)</button>
+                    <button id="incorrectBtn" class="action-button focusable" tabindex="0">Incorrect (→)</button>
+                </nav>
+                <div id="timingDisplay" class="timing-display">
+                    <p id="reactionTimeDisplay">Reaction: —</p>
+                    <p id="movementTimeDisplay">Move: —</p>
+                    <p id="totalTimeDisplay">Total: —</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feedback Screen -->
+        <div id="feedbackScreen" class="screen">
+            <div class="screen-content">
+                <h2 class="feedback-title">Rep Complete</h2>
+                <div class="feedback-data">
+                    <p><strong>Cue:</strong> <span id="feedbackCue">—</span></p>
+                    <p><strong>Reaction:</strong> <span id="feedbackReaction">—</span></p>
+                    <p><strong>Move:</strong> <span id="feedbackMove">—</span></p>
+                    <p><strong>Total:</strong> <span id="feedbackTotal">—</span></p>
+                    <p><strong>Correct:</strong> <span id="feedbackCorrect">—</span></p>
+                </div>
+                <nav class="nav-menu">
+                    <button id="nextRepBtn" class="action-button focusable" tabindex="0">Next Rep</button>
+                    <button id="endSessionBtn" class="action-button focusable" tabindex="0">End Session</button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Session Summary Screen -->
+        <div id="summaryScreen" class="screen">
+            <div class="screen-content">
+                <h2 class="title">Session Summary</h2>
+                <div class="summary-data">
+                    <p>Reps: <span id="summaryReps">0</span></p>
+                    <p>Avg Reaction: <span id="summaryAvgReaction">—</span></p>
+                    <p>Best Reaction: <span id="summaryBestReaction">—</span></p>
+                    <p>Avg Move: <span id="summaryAvgMove">—</span></p>
+                    <p>Accuracy: <span id="summaryAccuracy">—</span></p>
+                </div>
+                <div id="summaryChart" class="summary-chart"></div>
+                <nav class="nav-menu">
+                    <button id="exportDataBtn" class="action-button focusable" tabindex="0">Export CSV</button>
+                    <button id="summaryHomeBtn" class="action-button focusable" tabindex="0">Home</button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Settings Screen -->
+        <div id="settingsScreen" class="screen">
+            <div class="screen-content">
+                <h2 class="title">Settings</h2>
+                <div class="settings-list">
+                    <div class="setting-item">
+                        <label>Audio:</label>
+                        <select id="audioToggle" class="focusable" tabindex="0">
+                            <option value="on">On</option>
+                            <option value="off">Off</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <label>Timing Mode:</label>
+                        <select id="timingModeSelect" class="focusable" tabindex="0">
+                            <option value="manual">Manual</option>
+                            <option value="motion">Motion Detection</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <label>Speech Rate:</label>
+                        <select id="speechRateSelect" class="focusable" tabindex="0">
+                            <option value="0.8">Slow</option>
+                            <option value="1.0" selected>Normal</option>
+                            <option value="1.3">Fast</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <label>Delay Min (s):</label>
+                        <input id="delayMin" type="number" min="0.5" max="3" step="0.1" class="focusable" tabindex="0">
+                    </div>
+                    <div class="setting-item">
+                        <label>Delay Max (s):</label>
+                        <input id="delayMax" type="number" min="0.5" max="5" step="0.1" class="focusable" tabindex="0">
+                    </div>
+                    <div class="setting-item">
+                        <label>Cues:</label>
+                        <div class="cue-toggles">
+                            <label><input type="checkbox" class="cueToggle" value="LEFT"> LEFT</label>
+                            <label><input type="checkbox" class="cueToggle" value="RIGHT"> RIGHT</label>
+                            <label><input type="checkbox" class="cueToggle" value="PRESS"> PRESS</label>
+                            <label><input type="checkbox" class="cueToggle" value="DROP"> DROP</label>
+                            <label><input type="checkbox" class="cueToggle" value="TURN"> TURN</label>
+                            <label><input type="checkbox" class="cueToggle" value="MAN ON"> MAN ON</label>
+                            <label><input type="checkbox" class="cueToggle" value="GO"> GO</label>
+                        </div>
+                    </div>
+                </div>
+                <nav class="nav-menu">
+                    <button id="resetDataBtn" class="action-button danger focusable" tabindex="0">Reset All Data</button>
+                    <button id="settingsBackBtn" class="action-button focusable" tabindex="0">Back</button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Data View Screen -->
+        <div id="dataViewScreen" class="screen">
+            <div class="screen-content">
+                <h2 class="title">Stored Data</h2>
+                <div id="dataViewContent" class="data-view-content">
+                    <p>No data yet.</p>
+                </div>
+                <nav class="nav-menu">
+                    <button id="dataViewExportBtn" class="action-button focusable" tabindex="0">Export</button>
+                    <button id="dataViewHomeBtn" class="action-button focusable" tabindex="0">Home</button>
+                </nav>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
