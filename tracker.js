@@ -154,20 +154,31 @@ class SideTracker {
         }
 
         this.elements.startTrackingBtn.disabled = true;
+        this.setStatus('Opening camera...');
+
+        try {
+            await this.startCamera();
+            this.elements.trackerPlaceholder.style.display = 'none';
+        } catch (error) {
+            console.error(error);
+            this.setStatus(this.getCameraErrorMessage(error));
+            this.elements.startTrackingBtn.disabled = false;
+            return;
+        }
+
         this.setStatus('Loading pose tracker...');
 
         try {
             await this.initializePoseLandmarker();
-            await this.startCamera();
 
             this.isTracking = true;
             this.elements.stopTrackingBtn.disabled = false;
-            this.elements.trackerPlaceholder.style.display = 'none';
             this.setStatus('Tracking body position and saving samples.');
             requestAnimationFrame(() => this.trackFrame());
         } catch (error) {
             console.error(error);
-            this.setStatus('Camera or pose tracking failed. Use HTTPS and allow camera access.');
+            this.setStatus(this.getPoseErrorMessage(error));
+            this.stopTracking();
             this.elements.startTrackingBtn.disabled = false;
         }
     }
@@ -204,6 +215,10 @@ class SideTracker {
     }
 
     async startCamera() {
+        if (!navigator.mediaDevices?.getUserMedia) {
+            throw new Error('camera-api-unavailable');
+        }
+
         this.stream = await navigator.mediaDevices.getUserMedia({
             video: {
                 facingMode: { ideal: 'environment' },
@@ -216,6 +231,40 @@ class SideTracker {
         this.elements.trackerVideo.srcObject = this.stream;
         await this.elements.trackerVideo.play();
         this.resizeCanvas();
+    }
+
+    getCameraErrorMessage(error) {
+        const name = error?.name || '';
+        const message = error?.message || '';
+
+        if (!window.isSecureContext) {
+            return 'Camera blocked: open the Vercel HTTPS link, not plain HTTP.';
+        }
+
+        if (name === 'NotAllowedError' || name === 'SecurityError') {
+            return 'Camera blocked: allow camera access in browser settings.';
+        }
+
+        if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+            return 'Camera not found: try another device or browser.';
+        }
+
+        if (message === 'camera-api-unavailable') {
+            return 'Camera API unavailable in this browser.';
+        }
+
+        return `Camera failed: ${name || message || 'unknown error'}.`;
+    }
+
+    getPoseErrorMessage(error) {
+        const name = error?.name || '';
+        const message = error?.message || '';
+
+        if (!navigator.onLine) {
+            return 'Pose tracking failed: device is offline.';
+        }
+
+        return `Pose tracking failed: ${name || message || 'could not load model'}.`;
     }
 
     resizeCanvas() {
