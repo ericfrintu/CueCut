@@ -46,6 +46,8 @@ class SideTracker {
         this.poseLandmarker = null;
         this.PoseLandmarker = null;
         this.isTracking = false;
+        this.isPoseReady = false;
+        this.poseErrorShown = false;
         this.lastVideoTime = -1;
         this.lastSaveMs = 0;
 
@@ -159,6 +161,10 @@ class SideTracker {
         try {
             await this.startCamera();
             this.elements.trackerPlaceholder.style.display = 'none';
+            this.isTracking = true;
+            this.elements.stopTrackingBtn.disabled = false;
+            this.setStatus('Camera on. Loading pose tracker...');
+            requestAnimationFrame(() => this.trackFrame());
         } catch (error) {
             console.error(error);
             this.setStatus(this.getCameraErrorMessage(error));
@@ -166,20 +172,15 @@ class SideTracker {
             return;
         }
 
-        this.setStatus('Loading pose tracker...');
-
         try {
             await this.initializePoseLandmarker();
-
-            this.isTracking = true;
-            this.elements.stopTrackingBtn.disabled = false;
+            this.isPoseReady = true;
+            this.poseErrorShown = false;
             this.setStatus('Tracking body position and saving samples.');
-            requestAnimationFrame(() => this.trackFrame());
         } catch (error) {
             console.error(error);
             this.setStatus(this.getPoseErrorMessage(error));
-            this.stopTracking();
-            this.elements.startTrackingBtn.disabled = false;
+            this.elements.bodyFeedback.textContent = 'Camera preview is on. Pose overlay did not load.';
         }
     }
 
@@ -278,10 +279,19 @@ class SideTracker {
         if (!this.isTracking) return;
 
         const video = this.elements.trackerVideo;
-        if (video.currentTime !== this.lastVideoTime) {
+        if (this.isPoseReady && video.currentTime !== this.lastVideoTime) {
             this.lastVideoTime = video.currentTime;
-            const results = this.poseLandmarker.detectForVideo(video, performance.now());
-            this.renderResults(results);
+            try {
+                const results = this.poseLandmarker.detectForVideo(video, performance.now());
+                this.renderResults(results);
+            } catch (error) {
+                console.warn('Pose frame failed:', error);
+                this.isPoseReady = false;
+                if (!this.poseErrorShown) {
+                    this.poseErrorShown = true;
+                    this.setStatus('Camera is still on. Pose overlay paused after a tracking error.');
+                }
+            }
         }
 
         requestAnimationFrame(() => this.trackFrame());
@@ -438,6 +448,8 @@ class SideTracker {
 
     stopTracking() {
         this.isTracking = false;
+        this.isPoseReady = false;
+        this.poseErrorShown = false;
         this.elements.stopTrackingBtn.disabled = true;
         this.elements.startTrackingBtn.disabled = !this.sessionId;
         this.elements.trackerPlaceholder.style.display = 'flex';
