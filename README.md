@@ -177,8 +177,15 @@ When Firebase is available, completed reps are also mirrored to Firestore:
 
 - **`sessions/{sessionId}`**: Session metadata, including the short session code shown on the Ready screen
 - **`sessions/{sessionId}/reps/{repId}`**: Individual rep timing data for that session
+- **`sessions/{sessionId}/trackingSamples/{sampleId}`**: Side-device pose samples, body-position metrics, and feedback
 
 The dashboard still reads from local storage first, so the app stays usable if the network or Firebase is unavailable.
+
+### Side Tracker
+
+Open `/tracker.html` on a phone or laptop placed to the athlete's side. Enter the 4-digit session code shown on the glasses app, start the camera, and the tracker will save body-position samples to the same Firestore session.
+
+The tracker uses browser camera access and MediaPipe Pose Landmarker, so it must run on HTTPS or localhost.
 
 ### Default Settings
 
@@ -385,6 +392,8 @@ music257final/
 ├── index.html      # Main HTML (all screens, DOM structure)
 ├── styles.css      # Styling (600x600 optimized, HUD theme)
 ├── app.js          # App logic (state management, timing, data)
+├── tracker.html    # Side-device pose tracking page
+├── tracker.js      # Camera, pose metrics, and Firestore tracking sync
 └── README.md       # This file
 ```
 

@@ -540,6 +540,201 @@ body {
     font-family: 'Courier New', monospace;
 }
 
+/* Side Tracker */
+.tracker-body {
+    display: block;
+    min-height: 100%;
+    overflow-y: auto;
+    background: #000;
+}
+
+.tracker-app {
+    width: 100%;
+    min-height: 100vh;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 24px;
+    display: grid;
+    gap: 18px;
+}
+
+.tracker-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.tracker-header .title {
+    font-size: 2.2rem;
+    margin-bottom: 4px;
+    letter-spacing: 1px;
+}
+
+.tracker-header .subtitle {
+    margin-bottom: 0;
+}
+
+.tracker-link {
+    color: #00ff00;
+    border: 1px solid #00ff00;
+    border-radius: 4px;
+    padding: 10px 14px;
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.tracker-controls,
+.tracker-feedback {
+    width: 100%;
+    padding: 14px;
+    background: rgba(0, 255, 0, 0.05);
+    border: 1px solid rgba(0, 255, 0, 0.2);
+    border-radius: 4px;
+}
+
+.tracker-label {
+    display: block;
+    margin-bottom: 8px;
+    color: #aaa;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.tracker-connect-row,
+.tracker-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 180px;
+    gap: 12px;
+    align-items: center;
+}
+
+.tracker-actions {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.tracker-input {
+    width: 100%;
+    min-height: 58px;
+    padding: 14px 16px;
+    background: #050505;
+    border: 2px solid #00ff00;
+    border-radius: 4px;
+    color: #fff;
+    font: 700 1.4rem 'Courier New', monospace;
+    letter-spacing: 4px;
+    text-align: center;
+}
+
+.tracker-input:focus {
+    outline: none;
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.45);
+}
+
+.tracker-camera {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #060606;
+    border: 1px solid rgba(0, 255, 0, 0.25);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.tracker-camera video,
+.tracker-camera canvas,
+.tracker-placeholder {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.tracker-camera video {
+    object-fit: cover;
+}
+
+.tracker-camera canvas {
+    pointer-events: none;
+}
+
+.tracker-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #777;
+    font: 700 1rem 'Courier New', monospace;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(0, 255, 0, 0.04),
+        rgba(0, 255, 0, 0.04) 12px,
+        rgba(0, 0, 0, 0.4) 12px,
+        rgba(0, 0, 0, 0.4) 24px
+    );
+}
+
+.tracker-actions .action-button,
+.tracker-actions .back-button,
+.tracker-connect-row .action-button {
+    margin: 0;
+    max-width: none;
+}
+
+.tracker-actions button:disabled,
+.tracker-connect-row button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.tracker-feedback h2 {
+    margin-bottom: 12px;
+    color: #00ff00;
+    font-size: 1.4rem;
+    text-align: left;
+}
+
+.tracker-metrics {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Courier New', monospace;
+}
+
+.tracker-metrics th,
+.tracker-metrics td {
+    padding: 10px;
+    border-top: 1px solid rgba(0, 255, 0, 0.18);
+    text-align: left;
+}
+
+.tracker-metrics th {
+    width: 34%;
+    color: #aaa;
+}
+
+@media (max-width: 640px) {
+    .tracker-app {
+        padding: 16px;
+    }
+
+    .tracker-header {
+        display: grid;
+    }
+
+    .tracker-connect-row,
+    .tracker-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .tracker-camera {
+        aspect-ratio: 3 / 4;
+    }
+}
+
 /* Responsive for smaller screens */
 @media (max-height: 800px) {
     .cue-text {

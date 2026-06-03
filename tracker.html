@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="CueCut side-device motion tracker">
+    <meta name="theme-color" content="#000000">
+    <title>CueCut Side Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="tracker-body">
+    <main class="tracker-app">
+        <section class="tracker-header">
+            <div>
+                <h1 class="title">Side Tracker</h1>
+                <p class="subtitle">Enter the glasses session code.</p>
+            </div>
+            <a class="tracker-link" href="index.html">Glasses App</a>
+        </section>
+
+        <section class="tracker-controls">
+            <label class="tracker-label" for="sessionCodeInput">Session Code</label>
+            <div class="tracker-connect-row">
+                <input id="sessionCodeInput" class="tracker-input" inputmode="numeric" maxlength="4" placeholder="1234">
+                <button id="connectSessionBtn" class="action-button">Connect</button>
+            </div>
+            <p id="trackerStatus" class="small-text">Waiting for session code.</p>
+        </section>
+
+        <section class="tracker-camera">
+            <video id="trackerVideo" playsinline muted></video>
+            <canvas id="trackerCanvas"></canvas>
+            <div id="trackerPlaceholder" class="tracker-placeholder">Camera preview</div>
+        </section>
+
+        <section class="tracker-actions">
+            <button id="startTrackingBtn" class="action-button" disabled>Start Camera</button>
+            <button id="stopTrackingBtn" class="back-button" disabled>Stop</button>
+        </section>
+
+        <section class="tracker-feedback">
+            <h2 id="bodyFeedback">No body data yet.</h2>
+            <table class="tracker-metrics">
+                <tbody>
+                    <tr>
+                        <th>Lean</th>
+                        <td id="leanMetric">-</td>
+                    </tr>
+                    <tr>
+                        <th>Knee</th>
+                        <td id="kneeMetric">-</td>
+                    </tr>
+                    <tr>
+                        <th>Base</th>
+                        <td id="baseMetric">-</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    </main>
+
+    <script type="module" src="tracker.js"></script>
+</body>
+</html>
