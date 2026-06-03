@@ -365,6 +365,7 @@ class CueCutApp {
         // Home Screen
         document.getElementById('startSessionBtn').addEventListener('click', () => this.startSession());
         document.getElementById('viewDataBtn').addEventListener('click', () => this.viewData());
+        document.getElementById('viewScoresBtn').addEventListener('click', () => this.viewScores());
         document.getElementById('settingsBtn').addEventListener('click', () => this.goToScreen('settingsScreen'));
 
         // Ready Screen
@@ -387,6 +388,9 @@ class CueCutApp {
         // Data View Screen
         document.getElementById('dataViewExportBtn').addEventListener('click', () => this.exportCurrentDataView());
         document.getElementById('dataViewHomeBtn').addEventListener('click', () => this.goToHome());
+
+        // Scores Screen
+        document.getElementById('scoresHomeBtn').addEventListener('click', () => this.goToHome());
 
         // Settings
         this.loadSettingsUI();
@@ -479,6 +483,8 @@ class CueCutApp {
             if (this.currentScreen === 'settingsScreen') {
                 this.goToHome();
             } else if (this.currentScreen === 'dataViewScreen') {
+                this.goToHome();
+            } else if (this.currentScreen === 'scoresScreen') {
                 this.goToHome();
             }
             return;
@@ -907,6 +913,71 @@ class CueCutApp {
         }
 
         return Number.isFinite(fallbackTimestamp) ? fallbackTimestamp : 0;
+    }
+
+    viewScores() {
+        const scoresByCue = this.getTopScoresByCue();
+        const container = document.getElementById('scoresContent');
+
+        if (!scoresByCue.some(group => group.scores.length > 0)) {
+            container.innerHTML = '<p>No scores yet.</p>';
+            this.goToScreen('scoresScreen');
+            return;
+        }
+
+        let html = '<div class="scores-list">';
+
+        scoresByCue.forEach(group => {
+            html += `<section class="score-group">
+                <h3>${group.cue}</h3>
+                <ol>`;
+
+            if (group.scores.length === 0) {
+                html += '<li class="empty-score">No correct scores yet</li>';
+            } else {
+                group.scores.forEach(rep => {
+                    html += `<li>
+                        <span class="score-time">${(rep.reactionMs / 1000).toFixed(2)}s</span>
+                        <span class="score-date">${this.formatRepDate(rep.timestamp)}</span>
+                    </li>`;
+                });
+            }
+
+            html += '</ol></section>';
+        });
+
+        html += '</div>';
+        container.innerHTML = html;
+        this.goToScreen('scoresScreen');
+    }
+
+    getTopScoresByCue() {
+        const reps = this.storage.getAllReps()
+            .filter(rep => rep.correct === true && Number.isFinite(rep.reactionMs));
+
+        return CUE_BANK
+            .map(cue => {
+                const scores = reps
+                    .filter(rep => rep.cue === cue)
+                    .sort((a, b) => a.reactionMs - b.reactionMs)
+                    .slice(0, 3);
+
+                return { cue, scores };
+            });
+    }
+
+    formatRepDate(timestamp) {
+        const date = new Date(timestamp);
+
+        if (Number.isNaN(date.getTime())) {
+            return 'Unknown date';
+        }
+
+        return date.toLocaleDateString([], {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
     }
 
     exportCurrentSessionData() {

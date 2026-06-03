@@ -226,41 +226,26 @@ rep_1234567890_abc123,2024-03-15T14:30:22.123Z,LEFT,1000,1320,2434,320,1114,1434
 
 ## Deployment
 
-### Option 1: Vercel (Recommended)
+**See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.**
 
-Vercel provides free HTTPS hosting perfect for this single-page app.
+### Quick Deploy Options:
 
-1. **Create Vercel account**: https://vercel.com/signup
-2. **Install Vercel CLI** (optional, but recommended):
-   ```bash
-   npm install -g vercel
-   ```
-3. **Deploy**:
-   ```bash
-   vercel
-   ```
-   Follow prompts. Accept defaults for most questions.
-4. **URL**: Vercel provides a public HTTPS URL (e.g., `cuecut.vercel.app`)
+1. **Vercel** (Recommended): https://vercel.com/new → Drag & drop folder
+2. **Netlify**: https://app.netlify.com → Drag & drop folder  
+3. **GitHub Pages**: Push to GitHub → Enable Pages in Settings
 
-### Option 2: Netlify
+All three provide free HTTPS hosting.
 
-1. **Create Netlify account**: https://app.netlify.com
-2. **Drag & drop folder** into Netlify deploy area (or use CLI)
-   ```bash
-   npm install -g netlify-cli
-   netlify deploy --prod --dir .
-   ```
-3. **URL**: Netlify provides a public HTTPS URL
+### Example Deployed URL
 
-### Option 3: GitHub Pages
+After deployment, you'll have a public URL like:
+- `https://cuecut.vercel.app`
+- `https://cuecut-demo.netlify.app`
+- `https://username.github.io/music257final`
 
-1. Create a GitHub repository
-2. Push files to `main` branch
-3. Go to **Settings** → **Pages** → enable **Source: Deploy from a branch**
-4. Select `main` branch
-5. URL: `https://yourusername.github.io/music257final`
+Paste this URL into your Meta AI app to add the web app to your glasses.
 
-**Note**: GitHub Pages URLs must have HTTPS for DeviceMotion API access.
+---
 
 ## Adding to Meta Ray-Ban Display
 
