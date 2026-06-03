@@ -21,7 +21,6 @@ class RepData {
         this.reactionMs = null;
         this.movementMs = null;
         this.totalMs = null;
-        this.correct = null;
         this.timingMode = 'manual';
         this.motionStartMs = null;
         this.notes = '';
@@ -50,7 +49,6 @@ class RepData {
             this.reactionMs || '',
             this.movementMs || '',
             this.totalMs || '',
-            this.correct !== null ? (this.correct ? 'true' : 'false') : '',
             this.timingMode,
             this.motionStartMs || '',
             this.notes
@@ -58,7 +56,7 @@ class RepData {
     }
 
     static toCSVHeader() {
-        return 'rep_id,timestamp,cue,cue_start_ms,first_movement_ms,finish_ms,reaction_ms,movement_ms,total_ms,correct,timing_mode,motion_start_ms,notes';
+        return 'rep_id,timestamp,cue,cue_start_ms,first_movement_ms,finish_ms,reaction_ms,movement_ms,total_ms,timing_mode,motion_start_ms,notes';
     }
 }
 
@@ -301,12 +299,10 @@ class DataStorage {
                 avgReactionMs: 0,
                 bestReactionMs: 0,
                 avgMovementMs: 0,
-                totalAccuracy: 0
             };
         }
 
         const completedReps = reps.filter(r => r.reactionMs !== null && r.totalMs !== null);
-        const correctReps = reps.filter(r => r.correct === true);
 
         const reactionTimes = completedReps.map(r => r.reactionMs).filter(t => t !== null);
         const movementTimes = completedReps.map(r => r.movementMs).filter(t => t !== null);
@@ -315,8 +311,7 @@ class DataStorage {
             totalReps: reps.length,
             avgReactionMs: reactionTimes.length > 0 ? reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length : 0,
             bestReactionMs: reactionTimes.length > 0 ? Math.min(...reactionTimes) : 0,
-            avgMovementMs: movementTimes.length > 0 ? movementTimes.reduce((a, b) => a + b, 0) / movementTimes.length : 0,
-            totalAccuracy: reps.length > 0 ? (correctReps.length / reps.length) * 100 : 0
+            avgMovementMs: movementTimes.length > 0 ? movementTimes.reduce((a, b) => a + b, 0) / movementTimes.length : 0
         };
     }
 
@@ -376,8 +371,6 @@ class CueCutApp {
         document.getElementById('reactionFinishedBtn').addEventListener('click', () => this.finishReaction());
 
         // Feedback Screen
-        document.getElementById('feedbackCorrectBtn').addEventListener('click', () => this.markCorrect(true));
-        document.getElementById('feedbackIncorrectBtn').addEventListener('click', () => this.markCorrect(false));
         document.getElementById('nextRepBtn').addEventListener('click', () => this.goToReady());
         document.getElementById('endSessionBtn').addEventListener('click', () => this.endSession());
 
@@ -633,26 +626,12 @@ class CueCutApp {
         // Record reaction time as now - when cue started
         this.currentRepData.firstMovementMs = performance.now();
         this.currentRepData.calculateTimings();
-        
-        // Jump straight to feedback
-        this.showFeedback();
-    }
 
-    markCorrect(isCorrect) {
-        this.currentRepData.correct = isCorrect;
-
-        // Save or update the rep so changing Correct/Incorrect cannot duplicate it.
         this.storage.saveRep(this.currentRepData);
 
-        // Play feedback
-        if (isCorrect) {
-            const reactionSec = (this.currentRepData.reactionMs / 1000).toFixed(2);
-            this.audio.playFeedback(`Good rep. Reaction ${reactionSec} seconds.`);
-        } else {
-            this.audio.playFeedback('Incorrect action. Reset.');
-        }
+        const reactionSec = (this.currentRepData.reactionMs / 1000).toFixed(2);
+        this.audio.playFeedback(`Reaction ${reactionSec} seconds.`);
 
-        // Show feedback screen
         this.showFeedback();
     }
 
@@ -660,7 +639,6 @@ class CueCutApp {
         const rep = this.currentRepData;
         document.getElementById('feedbackCue').textContent = rep.cue;
         document.getElementById('feedbackReaction').textContent = rep.reactionMs !== null ? `${(rep.reactionMs / 1000).toFixed(2)}s` : '—';
-        document.getElementById('feedbackCorrect').textContent = rep.correct !== null ? (rep.correct ? 'Yes' : 'No') : '—';
 
         this.goToScreen('feedbackScreen');
     }
@@ -675,8 +653,6 @@ class CueCutApp {
 
     calculateSessionStats(reps) {
         const totalReps = reps.length;
-        const correctReps = reps.filter(r => r.correct === true).length;
-        const totalAccuracy = totalReps > 0 ? (correctReps / totalReps) * 100 : 0;
 
         const reactionTimes = reps.filter(r => r.reactionMs !== null).map(r => r.reactionMs);
         const avgReactionMs = reactionTimes.length > 0 ? reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length : 0;
@@ -685,14 +661,13 @@ class CueCutApp {
         const movementTimes = reps.filter(r => r.movementMs !== null).map(r => r.movementMs);
         const avgMovementMs = movementTimes.length > 0 ? movementTimes.reduce((a, b) => a + b, 0) / movementTimes.length : 0;
 
-        return { totalReps, avgReactionMs, bestReactionMs, avgMovementMs, totalAccuracy };
+        return { totalReps, avgReactionMs, bestReactionMs, avgMovementMs };
     }
 
     showSummary(stats, sessionReps) {
         document.getElementById('summaryReps').textContent = stats.totalReps;
         document.getElementById('summaryAvgReaction').textContent = stats.avgReactionMs > 0 ? `${(stats.avgReactionMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('summaryBestReaction').textContent = stats.bestReactionMs > 0 ? `${(stats.bestReactionMs / 1000).toFixed(2)}s` : '—';
-        document.getElementById('summaryAccuracy').textContent = stats.totalReps > 0 ? `${stats.totalAccuracy.toFixed(1)}%` : '—';
 
         this.drawChart(sessionReps);
         this.goToScreen('summaryScreen');
@@ -734,75 +709,6 @@ class CueCutApp {
         });
     }
 
-    legacyViewData() {
-        const allReps = this.storage.getAllReps();
-        
-        // Group reps by sessionId
-        const sessions = {};
-        allReps.forEach(rep => {
-            if (!sessions[rep.sessionId]) {
-                sessions[rep.sessionId] = [];
-            }
-            sessions[rep.sessionId].push(rep);
-        });
-
-        const container = document.getElementById('dataViewContent');
-
-        if (Object.keys(sessions).length === 0) {
-            container.innerHTML = '<p>No sessions yet.</p>';
-        } else {
-            let html = '<div class="sessions-list">';
-            
-            // Sort sessions by ID (newest first)
-            this.getSessionIdsNewestFirst(sessions).forEach(sessionId => {
-                const sessionReps = sessions[sessionId];
-                const repsCount = sessionReps.length;
-                const reactionTimes = sessionReps.filter(r => r.reactionMs !== null);
-                const avgReaction = reactionTimes.length > 0 
-                    ? (reactionTimes.reduce((sum, r) => sum + r.reactionMs, 0) / reactionTimes.length / 1000).toFixed(2)
-                    : '—';
-                
-                const dateStr = new Date(parseInt(sessionId.split('_')[1])).toLocaleString();
-                
-                html += `<div class="session-item" onclick="window.app.viewSessionDetails('${sessionId}')" style="cursor: pointer; padding: 12px; border: 1px solid #00ff00; margin: 8px 0; border-radius: 4px;\">\n                    <div><strong>${dateStr}</strong></div>\n                    <div>Reps: ${repsCount} | Avg Reaction: ${avgReaction}s</div>\n                </div>`;
-            });
-            
-            html += '</div>';
-            container.innerHTML = html;
-        }
-
-        this.goToScreen('dataViewScreen');
-    }
-
-    legacyViewSessionDetails(sessionId) {
-        const allReps = this.storage.getAllReps();
-        const sessionReps = allReps.filter(r => r.sessionId === sessionId);
-        const container = document.getElementById('dataViewContent');
-
-        let html = `<div style="margin-bottom: 16px;\"><button onclick="window.app.viewData()" class="back-button" style="background: none; border: 1px solid #00ff00; color: #00ff00; padding: 8px 16px; cursor: pointer; border-radius: 4px;\">← Back to Sessions</button></div>`;
-        html += '<div class="session-details">';
-        
-        sessionReps.forEach((rep, index) => {
-            html += `<div class="data-item" style="padding: 8px; border-bottom: 1px solid #333; margin: 8px 0;\">\n                <div><strong>Rep ${index + 1}</strong> | ${rep.cue}</div>\n                <div>Reaction: ${rep.reactionMs ? (rep.reactionMs / 1000).toFixed(2) + 's' : '—'} | Correct: ${rep.correct !== null ? (rep.correct ? 'Yes' : 'No') : '—'}</div>\n            </div>`;
-        });
-        
-        html += '</div>';
-        container.innerHTML = html;
-    }
-
-    legacyExportData() {
-        const csv = this.storage.exportCSV();
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `cuecut_data_${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
-
     viewData() {
         const allReps = this.storage.getAllReps();
         this.currentDataSessionId = null;
@@ -835,13 +741,9 @@ class CueCutApp {
                 const avgReaction = reactionTimes.length > 0
                     ? (reactionTimes.reduce((sum, rep) => sum + rep.reactionMs, 0) / reactionTimes.length / 1000).toFixed(2)
                     : '-';
-                const accuracy = repsCount > 0
-                    ? ((sessionReps.filter(rep => rep.correct === true).length / repsCount) * 100).toFixed(0)
-                    : '0';
-
                 html += `<button class="session-item focusable" data-session-id="${sessionId}" tabindex="0">
                     <span class="session-title">${this.formatSessionDate(sessionId, sessionReps)}</span>
-                    <span>Reps: ${repsCount} | Avg Reaction: ${avgReaction}s | Accuracy: ${accuracy}%</span>
+                    <span>Reps: ${repsCount} | Avg Reaction: ${avgReaction}s</span>
                 </button>`;
             });
 
@@ -872,7 +774,7 @@ class CueCutApp {
             <button id="backToSessionsBtn" class="back-button focusable" tabindex="0">Back to Sessions</button>
             <div>
                 <strong>${this.formatSessionDate(sessionId, sessionReps)}</strong><br>
-                Reps: ${stats.totalReps} | Avg: ${stats.avgReactionMs > 0 ? (stats.avgReactionMs / 1000).toFixed(2) + 's' : '-'} | Accuracy: ${stats.totalReps > 0 ? stats.totalAccuracy.toFixed(0) + '%' : '-'}
+                Reps: ${stats.totalReps} | Avg: ${stats.avgReactionMs > 0 ? (stats.avgReactionMs / 1000).toFixed(2) + 's' : '-'}
             </div>
         </div>`;
 
@@ -880,7 +782,7 @@ class CueCutApp {
         sessionReps.forEach((rep, index) => {
             html += `<div class="data-item">
                 <div><strong>Rep ${index + 1}</strong> | ${rep.cue}</div>
-                <div>Reaction: ${rep.reactionMs ? (rep.reactionMs / 1000).toFixed(2) + 's' : '-'} | Correct: ${rep.correct !== null ? (rep.correct ? 'Yes' : 'No') : '-'}</div>
+                <div>Reaction: ${rep.reactionMs ? (rep.reactionMs / 1000).toFixed(2) + 's' : '-'}</div>
             </div>`;
         });
         html += '</div>';
@@ -981,7 +883,7 @@ class CueCutApp {
 
     getTopScoresByCue() {
         const reps = this.storage.getAllReps()
-            .filter(rep => rep.correct === true && Number.isFinite(rep.reactionMs));
+            .filter(rep => Number.isFinite(rep.reactionMs));
 
         return CUE_BANK
             .map(cue => {

@@ -4,7 +4,7 @@ A real-time soccer reaction training web app optimized for Meta Ray-Ban Display 
 
 ## Project Overview
 
-CueCut is a Stanford final project designed to explore auditory-motor coupling in soccer athletes. The app displays soccer-specific cues (LEFT, RIGHT, DROP, TURN, GO) with configurable audio feedback and immediate performance metrics. Athletes react to cues by sprinting or cutting, and the app logs reaction time, movement time, and accuracy for training analysis.
+CueCut is a Stanford final project designed to explore auditory-motor coupling in soccer athletes. The app displays soccer-specific cues (LEFT, RIGHT, DROP, TURN, GO) with configurable audio feedback and immediate performance metrics. Athletes react to cues by sprinting or cutting, and the app logs reaction time and session history for training analysis.
 
 ### Core Features
 
@@ -25,11 +25,8 @@ CueCut is a Stanford final project designed to explore auditory-motor coupling i
 2. **Ready Screen**: Press Enter/Select to begin a rep
 3. **Waiting Screen**: Random 1-3 second delay (keeps athlete ready)
 4. **Cue Screen**: Large cue word appears with audio (e.g., "LEFT") – this is when timing starts
-5. **Movement Screen**: Athlete sprints/cuts; app allows manual marking of:
-   - First movement (when athlete starts moving)
-   - Finish (when movement is complete)
-   - Correct/Incorrect (whether reaction matched the cue)
-6. **Feedback Screen**: Displays reaction time, movement time, accuracy, and plays audio feedback
+5. **Movement Screen**: Athlete sprints/cuts, then taps Reaction Finished
+6. **Feedback Screen**: Displays reaction time and plays audio feedback
 7. **Repeat** for next rep, or **End Session** to see summary
 
 ### Key Metrics Captured
@@ -37,9 +34,8 @@ CueCut is a Stanford final project designed to explore auditory-motor coupling i
 Each rep saves:
 
 - **Reaction Time**: Delay from cue display to first movement (milliseconds)
-- **Movement Time**: Duration of the actual movement (milliseconds)
-- **Total Time**: Sum of reaction + movement (milliseconds)
-- **Cue Accuracy**: Whether the athlete performed the correct action
+- **Movement Time**: Optional duration field for future motion-timing modes
+- **Total Time**: Optional total timing field for future motion-timing modes
 - **Timestamp**: ISO 8601 format for session tracking
 - **Timing Mode**: Manual entry or motion detection
 
@@ -123,22 +119,15 @@ The app is now running locally. Use your **browser or keyboard** to test:
 ### Movement Screen
 
 - Current cue displayed
-- Four action buttons:
-  - **Mark First Movement** (↓): Record when athlete begins moving
-  - **Mark Finish** (↓): Record when movement ends
-  - **Correct** (→): Mark action as correct
-  - **Incorrect** (→): Mark action as incorrect
-- Real-time timing display showing reaction, movement, and total times
+- One action button:
+  - **Reaction Finished**: Record the reaction time and save the rep
 
 ### Feedback Screen
 
 - Summary of rep data:
   - Cue performed
   - Reaction time (e.g., "0.32s")
-  - Movement time (e.g., "1.14s")
-  - Total time (e.g., "1.46s")
-  - Accuracy (Yes/No)
-- Audio feedback: "Good rep" or "Incorrect action"
+- Audio feedback with the reaction time
 - Buttons: Next Rep, End Session
 
 ### Session Summary Screen
@@ -146,8 +135,6 @@ The app is now running locally. Use your **browser or keyboard** to test:
 - **Reps Completed**: Total number of reps in session
 - **Average Reaction Time**: Mean reaction time
 - **Best Reaction Time**: Fastest reaction
-- **Average Movement Time**: Mean movement duration
-- **Accuracy Percentage**: % of correct responses
 - **Reaction Time Graph**: Visual chart of last ~20 reps (simple bar chart)
 - Buttons: Export CSV, Home
 
@@ -163,7 +150,7 @@ The app is now running locally. Use your **browser or keyboard** to test:
 ### Data View Screen
 
 - Lists 10 most recent reps
-- Shows cue, reaction time, and accuracy for each
+- Shows cue and reaction time for each rep
 - Export button for CSV download
 
 ## Configuration
@@ -205,12 +192,12 @@ Edit `app.js` to adjust:
 Reps are exported with the following columns:
 
 ```
-rep_id,timestamp,cue,cue_start_ms,first_movement_ms,finish_ms,reaction_ms,movement_ms,total_ms,correct,timing_mode,motion_start_ms,notes
+rep_id,timestamp,cue,cue_start_ms,first_movement_ms,finish_ms,reaction_ms,movement_ms,total_ms,timing_mode,motion_start_ms,notes
 ```
 
 Example row:
 ```
-rep_1234567890_abc123,2024-03-15T14:30:22.123Z,LEFT,1000,1320,2434,320,1114,1434,true,manual,,
+rep_1234567890_abc123,2024-03-15T14:30:22.123Z,LEFT,1000,1320,,320,,,manual,,
 ```
 
 ### Opening in Spreadsheet
@@ -221,7 +208,6 @@ rep_1234567890_abc123,2024-03-15T14:30:22.123Z,LEFT,1000,1320,2434,320,1114,1434
 4. Analyze trends:
    - Sort by reaction time (ascending) to identify PRs
    - Filter by cue type to see if certain movements are faster
-   - Create pivot tables by cue accuracy
    - Plot reaction time across session (X-axis: rep number, Y-axis: reaction time)
 
 ## Deployment
@@ -315,11 +301,7 @@ Wearable AR displays offer a unique testing platform: they keep visual feedback 
 3. **Total Rep Time** (milliseconds)
    - Sum of reaction + movement; overall performance metric
 
-4. **Cue/Action Accuracy** (%)
-   - Percentage of reps where athlete performs correct action for the cue
-   - Target: >90% accuracy by session 3
-
-5. **Consistency** (standard deviation of reaction times)
+4. **Consistency** (standard deviation of reaction times)
    - Variability across reps within a session or across sessions
    - Lower = more consistent, better training adaptation
 
@@ -352,7 +334,7 @@ Wearable AR displays offer a unique testing platform: they keep visual feedback 
 ### Postulated Mechanisms
 
 1. **Multisensory Integration**: Audio + visual cues engage multiple cortical regions simultaneously, accelerating cross-modal binding
-2. **Rapid Feedback Loop**: Immediate timing feedback (within 1–2 seconds) enables real-time motor error correction
+2. **Rapid Feedback Loop**: Immediate timing feedback (within 1–2 seconds) supports fast adjustment between reps
 3. **Expectancy & Attention**: Repeated cues create predictive motor programs, reducing central processing latency
 4. **Neuroplasticity**: Consistent, rewarded practice drives synaptic consolidation in motor and cerebellar circuits
 
@@ -370,7 +352,7 @@ Wearable AR displays offer a unique testing platform: they keep visual feedback 
 3. **Glasses Camera Integration**: Use glasses camera to detect athlete movement directly
 4. **Pre/Post Video Analysis**: Correlate reaction time improvements with video-recorded cutting mechanics
 5. **Multiplayer/Competitive**: Track multiple athletes, leaderboard, social motivation
-6. **Advanced Visualization**: Heatmaps of accuracy by cue type, reaction time trends, fatigue detection
+6. **Advanced Visualization**: Reaction time trends, fatigue detection, and cue-specific leaderboards
 7. **Machine Learning**: Automated movement classification (sprint vs. cut) from motion sensors
 8. **Native SDK Integration**: Use Meta's Device Access Toolkit for lower-latency sensor access
 
@@ -390,7 +372,7 @@ music257final/
 
 ### Key Classes (app.js)
 
-- **`RepData`**: Data model for a single rep (cue, timings, accuracy, metadata)
+- **`RepData`**: Data model for a single rep (cue, timings, metadata)
 - **`Settings`**: Manages app configuration via localStorage
 - **`MotionDetector`**: Handles motion sensor permissions and accelerometer events
 - **`AudioFeedback`**: Wraps Web Speech API for cue and feedback audio
@@ -456,10 +438,9 @@ music257final/
 - [ ] Press Enter/Select → Waiting screen, then cue screen
 - [ ] Cue displays large, audio plays
 - [ ] Arrow keys navigate buttons, Enter selects
-- [ ] Mark First Movement and Finish → times populate
-- [ ] Mark Correct → feedback plays, summary shown
+- [ ] Reaction Finished → rep saves and feedback shows reaction time
 - [ ] Summary shows averages and chart
-- [ ] Export CSV → file downloads with correct data
+- [ ] Export CSV → file downloads with timing data
 - [ ] Settings toggle on/off → changes persist after refresh
 - [ ] Reset All Data → clears stored reps and resets settings
 - [ ] Motion Detection mode (if on device) → auto-populates first movement
@@ -488,14 +469,7 @@ In Google Sheets:
 ```
 Returns your fastest reaction time.
 
-### Example 2: Accuracy by Cue Type
-
-Create a pivot table:
-- **Rows**: Cue column
-- **Values**: COUNTA (count), SUM of correct column
-- **Calculate**: Correct / Total × 100%
-
-### Example 3: Reaction Time Trend
+### Example 2: Reaction Time Trend
 
 - **X-axis**: Rep number (timestamp ordered)
 - **Y-axis**: Reaction time (ms)
