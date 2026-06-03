@@ -171,6 +171,15 @@ All app state is stored in browser `localStorage`:
 - **`cuecut_reps`**: Array of all rep data objects
 - **`cuecut_settings`**: App settings (audio, timing mode, speech rate, delays, enabled cues)
 
+### Firestore Sync
+
+When Firebase is available, completed reps are also mirrored to Firestore:
+
+- **`sessions/{sessionId}`**: Session metadata, including the short session code shown on the Ready screen
+- **`sessions/{sessionId}/reps/{repId}`**: Individual rep timing data for that session
+
+The dashboard still reads from local storage first, so the app stays usable if the network or Firebase is unavailable.
+
 ### Default Settings
 
 ```javascript
@@ -386,6 +395,7 @@ music257final/
 - **`MotionDetector`**: Handles motion sensor permissions and accelerometer events
 - **`AudioFeedback`**: Uses Web Audio cue tones and Web Speech timing feedback
 - **`DataStorage`**: Manages localStorage for reps, stats calculations, CSV export
+- **`CloudStorage`**: Mirrors session and rep data to Firestore when Firebase is loaded
 - **`CueCutApp`**: Main controller; orchestrates UI, navigation, and rep flow
 
 ### State Management
@@ -394,6 +404,7 @@ music257final/
 - **Current Rep**: `app.currentRepData` holds in-progress rep object
 - **Settings**: Persisted in `localStorage['cuecut_settings']`
 - **All Reps**: Persisted in `localStorage['cuecut_reps']`
+- **Cloud Reps**: Mirrored to Firestore under `sessions/{sessionId}/reps`
 
 ### Event Loop
 

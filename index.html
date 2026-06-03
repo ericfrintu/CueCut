@@ -33,6 +33,7 @@
             <div class="screen-content">
                 <h2 class="cue-text">READY</h2>
                 <p class="instruction">Hold still</p>
+                <p class="small-text">Session <strong id="readySessionCode">----</strong></p>
                 <button id="startRepBtn" class="action-button focusable" tabindex="0">Press to Start Rep</button>
                 <button id="readyBackBtn" class="back-button focusable" tabindex="0">← Back</button>
             </div>
@@ -192,6 +193,38 @@
         </div>
     </div>
 
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+        import { getAnalytics, isSupported } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-analytics.js";
+        import { getFirestore, doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA6EnXXEkawDg7y8yLW52UYp0uheD1JLQQ",
+            authDomain: "cuecut-e7491.firebaseapp.com",
+            projectId: "cuecut-e7491",
+            storageBucket: "cuecut-e7491.firebasestorage.app",
+            messagingSenderId: "544158962434",
+            appId: "1:544158962434:web:6fe8cb81013baf16d9e81b",
+            measurementId: "G-8FJBK3HXPH"
+        };
+
+        const firebaseApp = initializeApp(firebaseConfig);
+        const db = getFirestore(firebaseApp);
+
+        isSupported()
+            .then((supported) => {
+                if (supported) getAnalytics(firebaseApp);
+            })
+            .catch((error) => console.warn('Firebase Analytics unavailable:', error));
+
+        window.CueCutFirebase = {
+            db,
+            doc,
+            setDoc,
+            serverTimestamp
+        };
+        window.dispatchEvent(new Event('cuecut:firebase-ready'));
+    </script>
     <script src="app.js"></script>
 </body>
 </html>

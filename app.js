@@ -399,6 +399,78 @@ class DataStorage {
     }
 }
 
+class CloudStorage {
+    constructor() {
+        this.firebase = null;
+        this.isAvailable = false;
+        this.pendingTasks = [];
+        this.maxPendingTasks = 25;
+
+        this.connectIfReady();
+        window.addEventListener('cuecut:firebase-ready', () => this.connectIfReady());
+    }
+
+    connectIfReady() {
+        if (this.isAvailable || !window.CueCutFirebase?.db) {
+            return;
+        }
+
+        this.firebase = window.CueCutFirebase;
+        this.isAvailable = true;
+        this.flushPendingTasks();
+    }
+
+    queueTask(task) {
+        if (!this.isAvailable) {
+            if (this.pendingTasks.length < this.maxPendingTasks) {
+                this.pendingTasks.push(task);
+            }
+            return;
+        }
+
+        task().catch(error => console.warn('Firestore sync failed:', error));
+    }
+
+    flushPendingTasks() {
+        const tasks = [...this.pendingTasks];
+        this.pendingTasks = [];
+        tasks.forEach(task => this.queueTask(task));
+    }
+
+    saveSession(sessionMeta) {
+        this.queueTask(async () => {
+            const { db, doc, setDoc, serverTimestamp } = this.firebase;
+            const sessionRef = doc(db, 'sessions', sessionMeta.sessionId);
+
+            await setDoc(sessionRef, {
+                ...sessionMeta,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+        });
+    }
+
+    saveRep(repData, sessionMeta = {}) {
+        this.queueTask(async () => {
+            const { db, doc, setDoc, serverTimestamp } = this.firebase;
+            const sessionId = repData.sessionId;
+            const sessionRef = doc(db, 'sessions', sessionId);
+            const repRef = doc(db, 'sessions', sessionId, 'reps', repData.id);
+
+            await setDoc(sessionRef, {
+                sessionId,
+                sessionCode: sessionMeta.sessionCode || repData.sessionCode || null,
+                startedAt: sessionMeta.startedAt || null,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            await setDoc(repRef, {
+                ...repData,
+                uploadedAt: serverTimestamp()
+            }, { merge: true });
+        });
+    }
+}
+
 // ============================================================================
 // APP CONTROLLER
 // ============================================================================
@@ -407,11 +479,13 @@ class CueCutApp {
     constructor() {
         this.settings = new Settings();
         this.storage = new DataStorage();
+        this.cloud = new CloudStorage();
         this.audio = new AudioFeedback(this.settings);
         this.motionDetector = new MotionDetector();
 
         this.currentRepData = null;
         this.currentSessionId = null;
+        this.currentSessionCode = null;
         this.currentSummarySessionId = null;
         this.currentDataSessionId = null;
         this.currentFeedbackScoreNote = null;
@@ -633,8 +707,19 @@ class CueCutApp {
 
     startSession() {
         this.currentSessionId = `session_${Date.now()}`;
+        this.currentSessionCode = this.generateSessionCode();
         this.currentSummarySessionId = this.currentSessionId;
+        this.cloud.saveSession({
+            sessionId: this.currentSessionId,
+            sessionCode: this.currentSessionCode,
+            startedAt: new Date().toISOString(),
+            source: 'glasses'
+        });
         this.goToReady();
+    }
+
+    generateSessionCode() {
+        return Math.floor(1000 + Math.random() * 9000).toString();
     }
 
     goToHome() {
@@ -643,6 +728,10 @@ class CueCutApp {
 
     goToReady() {
         this.currentRepData = null;
+        const sessionCodeEl = document.getElementById('readySessionCode');
+        if (sessionCodeEl) {
+            sessionCodeEl.textContent = this.currentSessionCode || '----';
+        }
         this.goToScreen('readyScreen');
     }
 
@@ -652,6 +741,7 @@ class CueCutApp {
         const cue = enabledCues[Math.floor(Math.random() * enabledCues.length)];
 
         this.currentRepData = new RepData(cue, this.currentSessionId);
+        this.currentRepData.sessionCode = this.currentSessionCode;
         this.currentRepData.timingMode = this.settings.get('timingMode');
 
         // Show waiting screen
@@ -706,6 +796,10 @@ class CueCutApp {
 
         this.currentFeedbackScoreNote = this.getScoreNoteForRep(this.currentRepData);
         this.storage.saveRep(this.currentRepData);
+        this.cloud.saveRep(this.currentRepData, {
+            sessionCode: this.currentSessionCode,
+            startedAt: this.getSessionStartedAt(this.currentSessionId)
+        });
 
         const reactionSec = (this.currentRepData.reactionMs / 1000).toFixed(2);
         this.audio.playFeedback(`Reaction ${reactionSec} seconds.`);
@@ -716,6 +810,11 @@ class CueCutApp {
         }
 
         this.showFeedback();
+    }
+
+    getSessionStartedAt(sessionId) {
+        const timestamp = this.getSessionTimestamp(sessionId);
+        return timestamp ? new Date(timestamp).toISOString() : null;
     }
 
     showFeedback() {
