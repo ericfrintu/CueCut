@@ -105,9 +105,9 @@ body {
 }
 
 .small-text {
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     color: #bbb;
-    margin: 8px 0;
+    margin: 4px 0;
 }
 
 .status-text {
@@ -197,22 +197,22 @@ body {
 .movement-menu {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: 8px;
     width: 100%;
-    margin: 20px 0;
+    margin: 12px 0;
 }
 
 .movement-menu button {
     width: 100%;
-    padding: 16px 12px;
-    font-size: 0.95rem;
+    padding: 12px 10px;
+    font-size: 0.85rem;
 }
 
 /* Movement Screen */
 .movement-info {
     width: 100%;
-    margin-bottom: 20px;
-    padding: 15px;
+    margin-bottom: 12px;
+    padding: 10px;
     background: rgba(0, 255, 0, 0.05);
     border: 1px solid rgba(0, 255, 0, 0.2);
     border-radius: 4px;
@@ -220,16 +220,16 @@ body {
 
 .timing-display {
     width: 100%;
-    margin-top: 20px;
-    padding: 15px;
+    margin-top: 12px;
+    padding: 10px;
     background: rgba(255, 170, 0, 0.1);
     border: 1px solid rgba(255, 170, 0, 0.3);
     border-radius: 4px;
 }
 
 .timing-display p {
-    font-size: 1.1rem;
-    margin: 8px 0;
+    font-size: 0.9rem;
+    margin: 4px 0;
     font-family: 'Courier New', monospace;
     font-weight: 600;
 }
