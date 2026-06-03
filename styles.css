@@ -398,6 +398,55 @@ body {
     font-family: 'Courier New', monospace;
 }
 
+.sessions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.session-item {
+    width: 100%;
+    padding: 12px;
+    background: rgba(0, 255, 0, 0.06);
+    border: 1px solid #00ff00;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+}
+
+.session-item:hover,
+.session-item:focus {
+    background: rgba(0, 255, 0, 0.16);
+    box-shadow: 0 0 12px rgba(0, 255, 0, 0.45);
+    outline: none;
+}
+
+.session-title {
+    display: block;
+    color: #00ff00;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.session-detail-header {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 14px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+}
+
+.session-detail-header .back-button {
+    margin: 0;
+    padding: 10px;
+    max-width: none;
+    font-size: 0.8rem;
+}
+
 /* Waiting Animation */
 .dots {
     font-size: 2rem;

@@ -10,8 +10,9 @@
 const CUE_BANK = ['LEFT', 'RIGHT', 'PRESS', 'DROP', 'TURN', 'MAN ON', 'GO'];
 
 class RepData {
-    constructor(cue) {
+    constructor(cue, sessionId) {
         this.id = `rep_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        this.sessionId = sessionId;
         this.timestamp = new Date().toISOString();
         this.cue = cue;
         this.cueStartMs = null;
@@ -260,6 +261,19 @@ class DataStorage {
         localStorage.setItem(this.storageKey, JSON.stringify(reps));
     }
 
+    saveRep(repData) {
+        const reps = this.getAllReps();
+        const existingIndex = reps.findIndex(rep => rep.id === repData.id);
+
+        if (existingIndex >= 0) {
+            reps[existingIndex] = repData;
+        } else {
+            reps.push(repData);
+        }
+
+        localStorage.setItem(this.storageKey, JSON.stringify(reps));
+    }
+
     getAllReps() {
         const data = localStorage.getItem(this.storageKey);
         if (!data) return [];
@@ -269,6 +283,10 @@ class DataStorage {
             console.error('Failed to parse reps:', e);
             return [];
         }
+    }
+
+    getRepsBySession(sessionId) {
+        return this.getAllReps().filter(rep => rep.sessionId === sessionId);
     }
 
     deleteAll() {
@@ -302,8 +320,7 @@ class DataStorage {
         };
     }
 
-    exportCSV() {
-        const reps = this.getAllReps();
+    exportCSV(reps = this.getAllReps()) {
         if (reps.length === 0) return RepData.toCSVHeader() + '\n';
 
         let csv = RepData.toCSVHeader() + '\n';
@@ -328,6 +345,9 @@ class CueCutApp {
         this.motionDetector = new MotionDetector();
 
         this.currentRepData = null;
+        this.currentSessionId = null;
+        this.currentSummarySessionId = null;
+        this.currentDataSessionId = null;
         this.currentScreen = 'homeScreen';
         this.focusedButton = null;
 
@@ -361,11 +381,11 @@ class CueCutApp {
         document.getElementById('endSessionBtn').addEventListener('click', () => this.endSession());
 
         // Summary Screen
-        document.getElementById('exportDataBtn').addEventListener('click', () => this.exportData());
+        document.getElementById('exportDataBtn').addEventListener('click', () => this.exportCurrentSessionData());
         document.getElementById('summaryHomeBtn').addEventListener('click', () => this.goToHome());
 
         // Data View Screen
-        document.getElementById('dataViewExportBtn').addEventListener('click', () => this.exportData());
+        document.getElementById('dataViewExportBtn').addEventListener('click', () => this.exportCurrentDataView());
         document.getElementById('dataViewHomeBtn').addEventListener('click', () => this.goToHome());
 
         // Settings
@@ -531,6 +551,8 @@ class CueCutApp {
     }
 
     startSession() {
+        this.currentSessionId = `session_${Date.now()}`;
+        this.currentSummarySessionId = this.currentSessionId;
         this.goToReady();
     }
 
@@ -548,7 +570,7 @@ class CueCutApp {
         const enabledCues = this.settings.get('enabledCues');
         const cue = enabledCues[Math.floor(Math.random() * enabledCues.length)];
 
-        this.currentRepData = new RepData(cue);
+        this.currentRepData = new RepData(cue, this.currentSessionId);
         this.currentRepData.timingMode = this.settings.get('timingMode');
 
         // Show waiting screen
@@ -608,8 +630,8 @@ class CueCutApp {
     markCorrect(isCorrect) {
         this.currentRepData.correct = isCorrect;
 
-        // Save rep
-        this.storage.addRep(this.currentRepData);
+        // Save or update the rep so changing Correct/Incorrect cannot duplicate it.
+        this.storage.saveRep(this.currentRepData);
 
         // Play feedback
         if (isCorrect) {
@@ -633,36 +655,52 @@ class CueCutApp {
     }
 
     endSession() {
-        const stats = this.storage.getStats();
-        this.showSummary(stats);
+        // Get stats for only this session's reps
+        this.currentSummarySessionId = this.currentSessionId;
+        const sessionReps = this.storage.getRepsBySession(this.currentSessionId);
+        const stats = this.calculateSessionStats(sessionReps);
+        this.showSummary(stats, sessionReps);
     }
 
-    showSummary(stats) {
+    calculateSessionStats(reps) {
+        const totalReps = reps.length;
+        const correctReps = reps.filter(r => r.correct === true).length;
+        const totalAccuracy = totalReps > 0 ? (correctReps / totalReps) * 100 : 0;
+
+        const reactionTimes = reps.filter(r => r.reactionMs !== null).map(r => r.reactionMs);
+        const avgReactionMs = reactionTimes.length > 0 ? reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length : 0;
+        const bestReactionMs = reactionTimes.length > 0 ? Math.min(...reactionTimes) : 0;
+
+        const movementTimes = reps.filter(r => r.movementMs !== null).map(r => r.movementMs);
+        const avgMovementMs = movementTimes.length > 0 ? movementTimes.reduce((a, b) => a + b, 0) / movementTimes.length : 0;
+
+        return { totalReps, avgReactionMs, bestReactionMs, avgMovementMs, totalAccuracy };
+    }
+
+    showSummary(stats, sessionReps) {
         document.getElementById('summaryReps').textContent = stats.totalReps;
         document.getElementById('summaryAvgReaction').textContent = stats.avgReactionMs > 0 ? `${(stats.avgReactionMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('summaryBestReaction').textContent = stats.bestReactionMs > 0 ? `${(stats.bestReactionMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('summaryAvgMove').textContent = stats.avgMovementMs > 0 ? `${(stats.avgMovementMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('summaryAccuracy').textContent = stats.totalReps > 0 ? `${stats.totalAccuracy.toFixed(1)}%` : '—';
 
-        this.drawChart(stats);
+        this.drawChart(sessionReps);
         this.goToScreen('summaryScreen');
     }
 
-    drawChart(stats) {
-        const reps = this.storage.getAllReps();
+    drawChart(sessionReps) {
         const chartContainer = document.getElementById('summaryChart');
         chartContainer.innerHTML = '';
 
-        if (reps.length === 0) {
+        if (sessionReps.length === 0) {
             chartContainer.innerHTML = '<p style="text-align: center; color: #666;">No data to display</p>';
             return;
         }
 
-        // Get reaction times
-        const reactionTimes = reps
+        // Get reaction times from this session only
+        const reactionTimes = sessionReps
             .filter(r => r.reactionMs !== null)
-            .map(r => r.reactionMs / 1000)
-            .slice(-20); // Last 20 reps
+            .map(r => r.reactionMs / 1000);
 
         if (reactionTimes.length === 0) {
             chartContainer.innerHTML = '<p style="text-align: center; color: #666;">No timing data</p>';
@@ -686,32 +724,197 @@ class CueCutApp {
         });
     }
 
-    viewData() {
-        const reps = this.storage.getAllReps();
+    legacyViewData() {
+        const allReps = this.storage.getAllReps();
+        
+        // Group reps by sessionId
+        const sessions = {};
+        allReps.forEach(rep => {
+            if (!sessions[rep.sessionId]) {
+                sessions[rep.sessionId] = [];
+            }
+            sessions[rep.sessionId].push(rep);
+        });
+
         const container = document.getElementById('dataViewContent');
 
-        if (reps.length === 0) {
-            container.innerHTML = '<p>No data stored yet.</p>';
+        if (Object.keys(sessions).length === 0) {
+            container.innerHTML = '<p>No sessions yet.</p>';
         } else {
-            let html = '';
-            reps.slice(-10).reverse().forEach(rep => {
-                html += `<div class="data-item">
-                    ${rep.cue} | Reaction: ${rep.reactionMs ? (rep.reactionMs / 1000).toFixed(2) + 's' : '—'} | Correct: ${rep.correct !== null ? (rep.correct ? 'Yes' : 'No') : '—'}
-                </div>`;
+            let html = '<div class="sessions-list">';
+            
+            // Sort sessions by ID (newest first)
+            Object.keys(sessions).sort().reverse().forEach(sessionId => {
+                const sessionReps = sessions[sessionId];
+                const repsCount = sessionReps.length;
+                const reactionTimes = sessionReps.filter(r => r.reactionMs !== null);
+                const avgReaction = reactionTimes.length > 0 
+                    ? (reactionTimes.reduce((sum, r) => sum + r.reactionMs, 0) / reactionTimes.length / 1000).toFixed(2)
+                    : '—';
+                
+                const dateStr = new Date(parseInt(sessionId.split('_')[1])).toLocaleString();
+                
+                html += `<div class="session-item" onclick="window.app.viewSessionDetails('${sessionId}')" style="cursor: pointer; padding: 12px; border: 1px solid #00ff00; margin: 8px 0; border-radius: 4px;\">\n                    <div><strong>${dateStr}</strong></div>\n                    <div>Reps: ${repsCount} | Avg Reaction: ${avgReaction}s</div>\n                </div>`;
             });
+            
+            html += '</div>';
             container.innerHTML = html;
         }
 
         this.goToScreen('dataViewScreen');
     }
 
-    exportData() {
+    legacyViewSessionDetails(sessionId) {
+        const allReps = this.storage.getAllReps();
+        const sessionReps = allReps.filter(r => r.sessionId === sessionId);
+        const container = document.getElementById('dataViewContent');
+
+        let html = `<div style="margin-bottom: 16px;\"><button onclick="window.app.viewData()" class="back-button" style="background: none; border: 1px solid #00ff00; color: #00ff00; padding: 8px 16px; cursor: pointer; border-radius: 4px;\">← Back to Sessions</button></div>`;
+        html += '<div class="session-details">';
+        
+        sessionReps.forEach((rep, index) => {
+            html += `<div class="data-item" style="padding: 8px; border-bottom: 1px solid #333; margin: 8px 0;\">\n                <div><strong>Rep ${index + 1}</strong> | ${rep.cue}</div>\n                <div>Reaction: ${rep.reactionMs ? (rep.reactionMs / 1000).toFixed(2) + 's' : '—'} | Correct: ${rep.correct !== null ? (rep.correct ? 'Yes' : 'No') : '—'}</div>\n            </div>`;
+        });
+        
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    legacyExportData() {
         const csv = this.storage.exportCSV();
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `cuecut_data_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    viewData() {
+        const allReps = this.storage.getAllReps();
+        this.currentDataSessionId = null;
+
+        const sessions = {};
+        allReps.forEach(rep => {
+            const sessionId = rep.sessionId || 'session_unknown';
+            if (!sessions[sessionId]) {
+                sessions[sessionId] = [];
+            }
+            sessions[sessionId].push(rep);
+        });
+
+        const container = document.getElementById('dataViewContent');
+        const exportButton = document.getElementById('dataViewExportBtn');
+        if (exportButton) {
+            exportButton.style.display = 'none';
+        }
+
+        if (Object.keys(sessions).length === 0) {
+            container.innerHTML = '<p>No sessions yet.</p>';
+        } else {
+            let html = '<div class="sessions-list">';
+
+            Object.keys(sessions).sort().reverse().forEach(sessionId => {
+                const sessionReps = sessions[sessionId];
+                const repsCount = sessionReps.length;
+                const reactionTimes = sessionReps.filter(rep => rep.reactionMs !== null);
+                const avgReaction = reactionTimes.length > 0
+                    ? (reactionTimes.reduce((sum, rep) => sum + rep.reactionMs, 0) / reactionTimes.length / 1000).toFixed(2)
+                    : '-';
+                const accuracy = repsCount > 0
+                    ? ((sessionReps.filter(rep => rep.correct === true).length / repsCount) * 100).toFixed(0)
+                    : '0';
+
+                html += `<button class="session-item focusable" data-session-id="${sessionId}" tabindex="0">
+                    <span class="session-title">${this.formatSessionDate(sessionId, sessionReps)}</span>
+                    <span>Reps: ${repsCount} | Avg Reaction: ${avgReaction}s | Accuracy: ${accuracy}%</span>
+                </button>`;
+            });
+
+            html += '</div>';
+            container.innerHTML = html;
+
+            container.querySelectorAll('.session-item').forEach(button => {
+                button.addEventListener('click', () => this.viewSessionDetails(button.dataset.sessionId));
+            });
+        }
+
+        this.goToScreen('dataViewScreen');
+    }
+
+    viewSessionDetails(sessionId) {
+        this.currentDataSessionId = sessionId;
+        const sessionReps = this.storage.getRepsBySession(sessionId);
+        const stats = this.calculateSessionStats(sessionReps);
+        const container = document.getElementById('dataViewContent');
+        const exportButton = document.getElementById('dataViewExportBtn');
+
+        if (exportButton) {
+            exportButton.style.display = '';
+            exportButton.textContent = 'Export Session';
+        }
+
+        let html = `<div class="session-detail-header">
+            <button id="backToSessionsBtn" class="back-button focusable" tabindex="0">Back to Sessions</button>
+            <div>
+                <strong>${this.formatSessionDate(sessionId, sessionReps)}</strong><br>
+                Reps: ${stats.totalReps} | Avg: ${stats.avgReactionMs > 0 ? (stats.avgReactionMs / 1000).toFixed(2) + 's' : '-'} | Accuracy: ${stats.totalReps > 0 ? stats.totalAccuracy.toFixed(0) + '%' : '-'}
+            </div>
+        </div>`;
+
+        html += '<div class="session-details">';
+        sessionReps.forEach((rep, index) => {
+            html += `<div class="data-item">
+                <div><strong>Rep ${index + 1}</strong> | ${rep.cue}</div>
+                <div>Reaction: ${rep.reactionMs ? (rep.reactionMs / 1000).toFixed(2) + 's' : '-'} | Correct: ${rep.correct !== null ? (rep.correct ? 'Yes' : 'No') : '-'}</div>
+            </div>`;
+        });
+        html += '</div>';
+
+        container.innerHTML = html;
+
+        const backButton = document.getElementById('backToSessionsBtn');
+        if (backButton) {
+            backButton.addEventListener('click', () => this.viewData());
+            backButton.focus();
+        }
+    }
+
+    formatSessionDate(sessionId, sessionReps = []) {
+        const sessionTimestamp = parseInt(String(sessionId).split('_')[1], 10);
+        const fallbackTimestamp = sessionReps[0] ? Date.parse(sessionReps[0].timestamp) : NaN;
+        const timestamp = Number.isFinite(sessionTimestamp) ? sessionTimestamp : fallbackTimestamp;
+
+        if (!Number.isFinite(timestamp)) {
+            return 'Unknown Session';
+        }
+
+        return new Date(timestamp).toLocaleString();
+    }
+
+    exportCurrentSessionData() {
+        const sessionId = this.currentSummarySessionId || this.currentSessionId;
+        const sessionReps = this.storage.getRepsBySession(sessionId);
+        this.exportData(sessionReps, `cuecut_session_${sessionId}`);
+    }
+
+    exportCurrentDataView() {
+        if (!this.currentDataSessionId) return;
+
+        const sessionReps = this.storage.getRepsBySession(this.currentDataSessionId);
+        this.exportData(sessionReps, `cuecut_session_${this.currentDataSessionId}`);
+    }
+
+    exportData(reps = this.storage.getAllReps(), filenamePrefix = 'cuecut_data') {
+        const csv = this.storage.exportCSV(reps);
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${filenamePrefix}_${new Date().toISOString().slice(0, 10)}.csv`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -727,4 +930,5 @@ let app;
 
 document.addEventListener('DOMContentLoaded', () => {
     app = new CueCutApp();
+    window.app = app;
 });
