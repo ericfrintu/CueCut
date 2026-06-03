@@ -627,8 +627,6 @@ class CueCutApp {
         const rep = this.currentRepData;
         document.getElementById('feedbackCue').textContent = rep.cue;
         document.getElementById('feedbackReaction').textContent = rep.reactionMs !== null ? `${(rep.reactionMs / 1000).toFixed(2)}s` : '—';
-        document.getElementById('feedbackMove').textContent = rep.movementMs !== null ? `${(rep.movementMs / 1000).toFixed(2)}s` : '—';
-        document.getElementById('feedbackTotal').textContent = rep.totalMs !== null ? `${(rep.totalMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('feedbackCorrect').textContent = rep.correct !== null ? (rep.correct ? 'Yes' : 'No') : '—';
 
         this.goToScreen('feedbackScreen');
