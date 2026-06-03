@@ -7,7 +7,7 @@
 // DATA MODEL
 // ============================================================================
 
-const CUE_BANK = ['LEFT', 'RIGHT', 'PRESS', 'DROP', 'TURN', 'MAN ON', 'GO'];
+const CUE_BANK = ['LEFT', 'RIGHT', 'DROP', 'TURN', 'GO'];
 
 class RepData {
     constructor(cue, sessionId) {
@@ -454,10 +454,13 @@ class CueCutApp {
     }
 
     loadSettings() {
-        // Ensure at least one cue is enabled
-        const enabledCues = this.settings.get('enabledCues');
-        if (!enabledCues || enabledCues.length === 0) {
+        const enabledCues = this.settings.get('enabledCues') || [];
+        const activeCues = enabledCues.filter(cue => CUE_BANK.includes(cue));
+
+        if (activeCues.length === 0) {
             this.settings.set('enabledCues', [...CUE_BANK]);
+        } else if (activeCues.length !== enabledCues.length) {
+            this.settings.set('enabledCues', activeCues);
         }
     }
 
@@ -925,28 +928,26 @@ class CueCutApp {
             return;
         }
 
-        let html = '<div class="scores-list">';
+        let html = `<table class="scores-table">
+            <thead>
+                <tr>
+                    <th>Drill</th>
+                    <th>Best</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>`;
 
         scoresByCue.forEach(group => {
-            html += `<section class="score-group">
-                <h3>${group.cue}</h3>
-                <ol>`;
-
-            if (group.scores.length === 0) {
-                html += '<li class="empty-score">No correct scores yet</li>';
-            } else {
-                group.scores.forEach(rep => {
-                    html += `<li>
-                        <span class="score-time">${(rep.reactionMs / 1000).toFixed(2)}s</span>
-                        <span class="score-date">${this.formatRepDate(rep.timestamp)}</span>
-                    </li>`;
-                });
-            }
-
-            html += '</ol></section>';
+            const bestScore = group.scores[0];
+            html += `<tr>
+                <td>${group.cue}</td>
+                <td>${bestScore ? (bestScore.reactionMs / 1000).toFixed(2) + 's' : '-'}</td>
+                <td>${bestScore ? this.formatRepDate(bestScore.timestamp) : '-'}</td>
+            </tr>`;
         });
 
-        html += '</div>';
+        html += '</tbody></table>';
         container.innerHTML = html;
         this.goToScreen('scoresScreen');
     }
@@ -960,7 +961,7 @@ class CueCutApp {
                 const scores = reps
                     .filter(rep => rep.cue === cue)
                     .sort((a, b) => a.reactionMs - b.reactionMs)
-                    .slice(0, 3);
+                    .slice(0, 1);
 
                 return { cue, scores };
             });
@@ -975,8 +976,7 @@ class CueCutApp {
 
         return date.toLocaleDateString([], {
             month: 'short',
-            day: 'numeric',
-            year: 'numeric'
+            day: 'numeric'
         });
     }
 

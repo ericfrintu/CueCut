@@ -4,7 +4,7 @@ A real-time soccer reaction training web app optimized for Meta Ray-Ban Display 
 
 ## Project Overview
 
-CueCut is a Stanford final project designed to explore auditory-motor coupling in soccer athletes. The app displays soccer-specific cues (LEFT, RIGHT, PRESS, DROP, TURN, MAN ON, GO) with configurable audio feedback and immediate performance metrics. Athletes react to cues by sprinting or cutting, and the app logs reaction time, movement time, and accuracy for training analysis.
+CueCut is a Stanford final project designed to explore auditory-motor coupling in soccer athletes. The app displays soccer-specific cues (LEFT, RIGHT, DROP, TURN, GO) with configurable audio feedback and immediate performance metrics. Athletes react to cues by sprinting or cutting, and the app logs reaction time, movement time, and accuracy for training analysis.
 
 ### Core Features
 
@@ -184,7 +184,7 @@ All app state is stored in browser `localStorage`:
     speechRate: 1.0,
     delayMin: 1.0,
     delayMax: 3.0,
-    enabledCues: ['LEFT', 'RIGHT', 'PRESS', 'DROP', 'TURN', 'MAN ON', 'GO'],
+    enabledCues: ['LEFT', 'RIGHT', 'DROP', 'TURN', 'GO'],
     motionDetectionEnabled: false
 }
 ```
