@@ -352,11 +352,11 @@ class CueCutApp {
         document.getElementById('readyBackBtn').addEventListener('click', () => this.goToHome());
 
         // Movement Screen
-        document.getElementById('reactionBtn').addEventListener('click', () => this.markReaction());
-        document.getElementById('correctBtn').addEventListener('click', () => this.markCorrect(true));
-        document.getElementById('incorrectBtn').addEventListener('click', () => this.markCorrect(false));
+        document.getElementById('reactionFinishedBtn').addEventListener('click', () => this.finishReaction());
 
         // Feedback Screen
+        document.getElementById('feedbackCorrectBtn').addEventListener('click', () => this.markCorrect(true));
+        document.getElementById('feedbackIncorrectBtn').addEventListener('click', () => this.markCorrect(false));
         document.getElementById('nextRepBtn').addEventListener('click', () => this.goToReady());
         document.getElementById('endSessionBtn').addEventListener('click', () => this.endSession());
 
@@ -593,24 +593,16 @@ class CueCutApp {
 
     goToMovementScreen() {
         document.getElementById('currentCueDisplay').innerHTML = `Cue: <strong>${this.currentRepData.cue}</strong>`;
-        this.updateMovementDisplay();
         this.goToScreen('movementScreen');
     }
 
-    updateMovementDisplay() {
-        if (this.currentRepData.reactionMs !== null) {
-            document.getElementById('reactionTimeDisplay').textContent = `Reaction: ${(this.currentRepData.reactionMs / 1000).toFixed(2)}s`;
-        }
-    }
-
-    markReaction() {
+    finishReaction() {
+        // Record reaction time as now - when cue started
         this.currentRepData.firstMovementMs = performance.now();
         this.currentRepData.calculateTimings();
-        this.updateMovementDisplay();
         
-        // Disable button
-        document.getElementById('reactionBtn').disabled = true;
-        document.getElementById('reactionBtn').style.opacity = '0.5';
+        // Jump straight to feedback
+        this.showFeedback();
     }
 
     markCorrect(isCorrect) {
