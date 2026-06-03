@@ -14,6 +14,7 @@ CueCut is a Stanford final project designed to explore auditory-motor coupling i
 - **Session Tracking**: Automatic data logging with localStorage persistence
 - **CSV Export**: Export all rep data for analysis in spreadsheet tools
 - **Performance Visualization**: Simple reaction time graphs showing progress across reps
+- **Score Tracking**: PR callouts, best/latest cue scores, and fatigue readouts
 - **D-Pad Navigation**: Full keyboard/arrow key control for use on glasses
 - **Motion Sensor Support**: Optional accelerometer/gyroscope integration (bonus feature)
 
@@ -132,6 +133,7 @@ The app is now running locally. Use your **browser or keyboard** to test:
 - Summary of rep data:
   - Cue performed
   - Reaction time (e.g., "0.32s")
+  - Score note (new PR, tied PR, or delta from best)
 - Audio feedback with the reaction time
 - Buttons: Next Rep, End Session
 
@@ -140,6 +142,7 @@ The app is now running locally. Use your **browser or keyboard** to test:
 - **Reps Completed**: Total number of reps in session
 - **Average Reaction Time**: Mean reaction time
 - **Best Reaction Time**: Fastest reaction
+- **Fatigue**: Last reps compared with early-session reps
 - **Reaction Time Graph**: Visual chart of last ~20 reps (simple bar chart)
 - Buttons: Export CSV, Home
 
@@ -148,6 +151,7 @@ The app is now running locally. Use your **browser or keyboard** to test:
 - **Audio Toggle**: On/Off
 - **Timing Mode**: Manual or Motion Detection
 - **Speech Rate**: Slow (0.8x), Normal (1.0x), Fast (1.3x)
+- **Session Goal**: Open, 5, 10, or 20 reps before auto-summary
 - **Random Delay Range**: Min and max delay in seconds (default 1.0–3.0s)
 - **Cue Selection**: Checkboxes to enable/disable specific cues
 - **Reset All Data**: Clears all stored reps and settings
@@ -444,7 +448,10 @@ music257final/
 - [ ] Cue displays large, audio plays
 - [ ] Arrow keys navigate buttons, Enter selects
 - [ ] Reaction Finished → rep saves and feedback shows reaction time
+- [ ] Feedback shows PR/delta score note
+- [ ] Session goal auto-ends at selected rep count
 - [ ] Summary shows averages and chart
+- [ ] Summary fatigue readout appears after enough reps
 - [ ] Export CSV → file downloads with timing data
 - [ ] Settings toggle on/off → changes persist after refresh
 - [ ] Reset All Data → clears stored reps and resets settings

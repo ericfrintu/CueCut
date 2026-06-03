@@ -70,6 +70,7 @@ class Settings {
             audioEnabled: true,
             timingMode: 'manual',
             speechRate: 1.0,
+            sessionGoalReps: 0,
             delayMin: 1.0,
             delayMax: 3.0,
             enabledCues: [...CUE_BANK],
@@ -413,6 +414,7 @@ class CueCutApp {
         this.currentSessionId = null;
         this.currentSummarySessionId = null;
         this.currentDataSessionId = null;
+        this.currentFeedbackScoreNote = null;
         this.currentScreen = 'homeScreen';
         this.focusedButton = null;
 
@@ -481,6 +483,11 @@ class CueCutApp {
         document.getElementById('speechRateSelect').value = this.settings.get('speechRate');
         document.getElementById('speechRateSelect').addEventListener('change', (e) => {
             this.settings.set('speechRate', parseFloat(e.target.value));
+        });
+
+        document.getElementById('sessionGoalSelect').value = String(this.settings.get('sessionGoalReps'));
+        document.getElementById('sessionGoalSelect').addEventListener('change', (e) => {
+            this.settings.set('sessionGoalReps', parseInt(e.target.value, 10));
         });
 
         document.getElementById('delayMin').value = this.settings.get('delayMin');
@@ -697,10 +704,16 @@ class CueCutApp {
         this.currentRepData.firstMovementMs = performance.now();
         this.currentRepData.calculateTimings();
 
+        this.currentFeedbackScoreNote = this.getScoreNoteForRep(this.currentRepData);
         this.storage.saveRep(this.currentRepData);
 
         const reactionSec = (this.currentRepData.reactionMs / 1000).toFixed(2);
         this.audio.playFeedback(`Reaction ${reactionSec} seconds.`);
+
+        if (this.isSessionGoalReached()) {
+            this.endSession();
+            return;
+        }
 
         this.showFeedback();
     }
@@ -709,8 +722,42 @@ class CueCutApp {
         const rep = this.currentRepData;
         document.getElementById('feedbackCue').textContent = rep.cue;
         document.getElementById('feedbackReaction').textContent = rep.reactionMs !== null ? `${(rep.reactionMs / 1000).toFixed(2)}s` : '—';
+        document.getElementById('feedbackScoreNote').textContent = this.currentFeedbackScoreNote || '—';
 
         this.goToScreen('feedbackScreen');
+    }
+
+    getScoreNoteForRep(rep) {
+        if (!Number.isFinite(rep.reactionMs)) return '-';
+
+        const previousBest = this.getBestReactionForCue(rep.cue);
+        if (!previousBest) {
+            return `First ${rep.cue} score`;
+        }
+
+        const deltaMs = rep.reactionMs - previousBest.reactionMs;
+        if (deltaMs < 0) {
+            return `New ${rep.cue} PR by ${(Math.abs(deltaMs) / 1000).toFixed(2)}s`;
+        }
+
+        if (deltaMs === 0) {
+            return `Tied ${rep.cue} PR`;
+        }
+
+        return `+${(deltaMs / 1000).toFixed(2)}s from ${rep.cue} best`;
+    }
+
+    getBestReactionForCue(cue) {
+        return this.storage.getAllReps()
+            .filter(rep => rep.cue === cue && Number.isFinite(rep.reactionMs))
+            .sort((a, b) => a.reactionMs - b.reactionMs)[0] || null;
+    }
+
+    isSessionGoalReached() {
+        const goalReps = this.settings.get('sessionGoalReps');
+        if (!goalReps || goalReps <= 0) return false;
+
+        return this.storage.getRepsBySession(this.currentSessionId).length >= goalReps;
     }
 
     endSession() {
@@ -730,17 +777,43 @@ class CueCutApp {
 
         const movementTimes = reps.filter(r => r.movementMs !== null).map(r => r.movementMs);
         const avgMovementMs = movementTimes.length > 0 ? movementTimes.reduce((a, b) => a + b, 0) / movementTimes.length : 0;
+        const fatigue = this.calculateFatigue(reactionTimes);
 
-        return { totalReps, avgReactionMs, bestReactionMs, avgMovementMs };
+        return { totalReps, avgReactionMs, bestReactionMs, avgMovementMs, fatigue };
     }
 
     showSummary(stats, sessionReps) {
         document.getElementById('summaryReps').textContent = stats.totalReps;
         document.getElementById('summaryAvgReaction').textContent = stats.avgReactionMs > 0 ? `${(stats.avgReactionMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('summaryBestReaction').textContent = stats.bestReactionMs > 0 ? `${(stats.bestReactionMs / 1000).toFixed(2)}s` : '—';
+        document.getElementById('summaryFatigue').textContent = stats.fatigue;
 
         this.drawChart(sessionReps);
         this.goToScreen('summaryScreen');
+    }
+
+    calculateFatigue(reactionTimes) {
+        if (reactionTimes.length < 6) {
+            return 'Need 6+ reps';
+        }
+
+        const sampleSize = Math.min(5, Math.floor(reactionTimes.length / 2));
+        const earlyAvg = this.average(reactionTimes.slice(0, sampleSize));
+        const lateAvg = this.average(reactionTimes.slice(-sampleSize));
+        const deltaMs = lateAvg - earlyAvg;
+
+        if (Math.abs(deltaMs) < 10) {
+            return 'Stable';
+        }
+
+        const direction = deltaMs > 0 ? '+' : '-';
+        const label = deltaMs > 0 ? 'slower' : 'faster';
+        return `Last ${sampleSize}: ${direction}${(Math.abs(deltaMs) / 1000).toFixed(2)}s ${label}`;
+    }
+
+    average(values) {
+        if (values.length === 0) return 0;
+        return values.reduce((sum, value) => sum + value, 0) / values.length;
     }
 
     drawChart(sessionReps) {
@@ -909,7 +982,7 @@ class CueCutApp {
         const scoresByCue = this.getTopScoresByCue();
         const container = document.getElementById('scoresContent');
 
-        if (!scoresByCue.some(group => group.scores.length > 0)) {
+        if (!scoresByCue.some(group => group.best)) {
             container.innerHTML = '<p>No scores yet.</p>';
             this.goToScreen('scoresScreen');
             return;
@@ -920,17 +993,18 @@ class CueCutApp {
                 <tr>
                     <th>Drill</th>
                     <th>Best</th>
+                    <th>Latest</th>
                     <th>Date</th>
                 </tr>
             </thead>
             <tbody>`;
 
         scoresByCue.forEach(group => {
-            const bestScore = group.scores[0];
             html += `<tr>
                 <td>${group.cue}</td>
-                <td>${bestScore ? (bestScore.reactionMs / 1000).toFixed(2) + 's' : '-'}</td>
-                <td>${bestScore ? this.formatRepDate(bestScore.timestamp) : '-'}</td>
+                <td>${group.best ? this.formatSeconds(group.best.reactionMs) : '-'}</td>
+                <td>${group.latest ? this.formatSeconds(group.latest.reactionMs) : '-'}</td>
+                <td>${group.best ? this.formatRepDate(group.best.timestamp) : '-'}</td>
             </tr>`;
         });
 
@@ -957,13 +1031,18 @@ class CueCutApp {
 
         return CUE_BANK
             .map(cue => {
-                const scores = reps
-                    .filter(rep => rep.cue === cue)
-                    .sort((a, b) => a.reactionMs - b.reactionMs)
-                    .slice(0, 1);
+                const cueReps = reps.filter(rep => rep.cue === cue);
+                const best = [...cueReps].sort((a, b) => a.reactionMs - b.reactionMs)[0] || null;
+                const latest = [...cueReps].sort((a, b) => {
+                    return Date.parse(b.timestamp) - Date.parse(a.timestamp);
+                })[0] || null;
 
-                return { cue, scores };
+                return { cue, best, latest };
             });
+    }
+
+    formatSeconds(ms) {
+        return `${(ms / 1000).toFixed(2)}s`;
     }
 
     formatRepDate(timestamp) {

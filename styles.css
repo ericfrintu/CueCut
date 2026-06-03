@@ -483,18 +483,24 @@ body {
 
 .scores-table td:nth-child(1),
 .scores-table th:nth-child(1) {
-    width: 34%;
+    width: 28%;
 }
 
 .scores-table td:nth-child(2),
 .scores-table th:nth-child(2) {
-    width: 24%;
+    width: 22%;
     text-align: right;
 }
 
 .scores-table td:nth-child(3),
 .scores-table th:nth-child(3) {
-    width: 42%;
+    width: 22%;
+    text-align: right;
+}
+
+.scores-table td:nth-child(4),
+.scores-table th:nth-child(4) {
+    width: 28%;
     text-align: right;
 }
 
