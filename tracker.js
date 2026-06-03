@@ -12,11 +12,6 @@ import {
     setDoc,
     where
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
-import {
-    FilesetResolver,
-    PoseLandmarker
-} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/vision_bundle.mjs";
-
 const firebaseConfig = {
     apiKey: "AIzaSyA6EnXXEkawDg7y8yLW52UYp0uheD1JLQQ",
     authDomain: "cuecut-e7491.firebaseapp.com",
@@ -49,6 +44,7 @@ class SideTracker {
         this.sessionCode = null;
         this.stream = null;
         this.poseLandmarker = null;
+        this.PoseLandmarker = null;
         this.isTracking = false;
         this.lastVideoTime = -1;
         this.lastSaveMs = 0;
@@ -70,6 +66,7 @@ class SideTracker {
 
         this.canvasContext = this.elements.trackerCanvas.getContext('2d');
         this.bindEvents();
+        this.setStatus('Enter the 4-digit code from the glasses.');
     }
 
     bindEvents() {
@@ -178,6 +175,11 @@ class SideTracker {
     async initializePoseLandmarker() {
         if (this.poseLandmarker) return;
 
+        const { FilesetResolver, PoseLandmarker } = await import(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/vision_bundle.mjs"
+        );
+        this.PoseLandmarker = PoseLandmarker;
+
         const vision = await FilesetResolver.forVisionTasks(
             "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
         );
@@ -191,7 +193,7 @@ class SideTracker {
     }
 
     async createPoseLandmarker(vision, delegate) {
-        return PoseLandmarker.createFromOptions(vision, {
+        return this.PoseLandmarker.createFromOptions(vision, {
             baseOptions: {
                 modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
                 delegate
