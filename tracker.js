@@ -663,6 +663,16 @@ class SideTracker {
         const shoulderTiltDeg = this.segmentTiltDeg(landmarks[11], landmarks[12]);
         const hipTiltDeg = this.segmentTiltDeg(landmarks[23], landmarks[24]);
         const shoulderHipOffsetPct = Math.abs(shoulder.x - hip.x) / hipWidth * 100;
+        const torsoHeight = Math.max(Math.abs(shoulder.y - hip.y), 0.05);
+        const leftFootReachPct = Math.abs(landmarks[27].x - hip.x) / torsoHeight * 100;
+        const rightFootReachPct = Math.abs(landmarks[28].x - hip.x) / torsoHeight * 100;
+        const footReachPct = Math.max(leftFootReachPct, rightFootReachPct);
+        const leftShinAngleDeg = this.segmentVerticalTiltDeg(landmarks[25], landmarks[27]);
+        const rightShinAngleDeg = this.segmentVerticalTiltDeg(landmarks[26], landmarks[28]);
+        const shinAngles = [leftShinAngleDeg, rightShinAngleDeg].filter(Number.isFinite);
+        const shinAngleDeg = shinAngles.length
+            ? shinAngles.reduce((total, angle) => total + angle, 0) / shinAngles.length
+            : 0;
 
         return {
             trunkLeanDeg,
@@ -677,6 +687,8 @@ class SideTracker {
             shoulderTiltDeg,
             hipTiltDeg,
             shoulderHipOffsetPct,
+            footReachPct,
+            shinAngleDeg,
             hipHeightPct: hip.y * 100,
             poseScore: this.getPoseScore(landmarks, runType)
         };
@@ -706,14 +718,30 @@ class SideTracker {
     }
 
     buildFeedback(metrics, runType = 'AUTO') {
-        const notes = [];
-        const good = [];
+        const issues = [];
+        const strengths = [];
 
         if (metrics.poseScore < MIN_TRACKING_POSE_SCORE) {
             return {
-                message: 'Body partly out of frame.',
+                message: 'Low-confidence tracking. Keep torso and one full leg visible.',
                 good: 'camera connected',
-                fix: 'keep torso and one full leg in frame',
+                fix: 'camera angle needs cleanup',
+                cue: 'Move the camera so hips, shoulders, knee, and foot stay visible.',
+                drill: 'Camera setup rep before testing',
+                score: 35,
+                confidence: 'low',
+                strengths: ['camera connected'],
+                fixes: ['tracking confidence is low'],
+                issues: [{
+                    key: 'low-confidence',
+                    label: 'Tracking confidence is low',
+                    fix: 'Keep the athlete bigger in frame with hips, shoulders, knee, and foot visible.',
+                    cue: 'Fill the frame before the next rep.',
+                    drill: 'Camera setup rep before testing',
+                    severity: 4,
+                    confidence: metrics.poseScore,
+                    moment: 'whole rep'
+                }],
                 leanLabel: 'low confidence',
                 kneeLabel: 'low confidence',
                 baseLabel: 'low confidence',
@@ -722,54 +750,33 @@ class SideTracker {
         }
 
         let leanLabel = 'good lean';
-        if (metrics.trunkLeanDeg < 8) {
-            leanLabel = 'too upright';
-            notes.push('Lean forward more');
-        } else if (metrics.trunkLeanDeg > 32) {
-            leanLabel = 'over leaning';
-            notes.push('Control the lean');
-        } else {
-            good.push('lean');
-        }
-
         let kneeLabel = 'athletic bend';
-        if (metrics.kneeAngleDeg > 165) {
-            kneeLabel = 'knees straight';
-            notes.push('Bend knees');
-        } else if (metrics.kneeAngleDeg < 120) {
-            kneeLabel = 'very deep';
-            notes.push('Rise slightly');
-        } else {
-            good.push('knee bend');
-        }
-
         let baseLabel = 'stable base';
-        if (metrics.stanceWidthPct < 6) {
-            baseLabel = 'narrow base';
-            notes.push('Widen base');
-        } else if (metrics.stanceWidthPct > 24) {
-            baseLabel = 'wide base';
-            notes.push('Narrow base');
+
+        if (runType === 'GO') {
+            ({ leanLabel, kneeLabel, baseLabel } = this.addAccelerationFeedback(issues, strengths, metrics));
+        } else if (runType === 'LEFT' || runType === 'RIGHT') {
+            ({ leanLabel, kneeLabel, baseLabel } = this.addCuttingFeedback(issues, strengths, metrics, runType));
         } else {
-            good.push('base');
+            ({ leanLabel, kneeLabel, baseLabel } = this.addGeneralMovementFeedback(issues, strengths, metrics, runType));
         }
 
-        if (runType === 'TURN' && metrics.trunkLeanDeg < 12) {
-            notes.push('Load turn angle');
-        }
-
-        if ((runType === 'LEFT' || runType === 'RIGHT') && metrics.stanceWidthPct < 8) {
-            notes.push('Push from wider base');
-        }
-
-        if (runType === 'LEFT' || runType === 'RIGHT') {
-            this.addCuttingFeedback(notes, good, metrics, runType);
-        }
+        const rankedIssues = this.rankIssues(issues);
+        const rankedStrengths = strengths.slice(0, 3);
+        const topIssue = rankedIssues[0] || null;
+        const score = this.scoreFeedback(metrics, rankedIssues);
 
         return {
-            message: notes.length ? notes.join(' + ') : 'Good athletic position',
-            good: good.length ? good.join(', ') : 'effort and camera view',
-            fix: notes.length ? notes.join(', ') : 'keep same shape',
+            message: topIssue ? topIssue.fix : 'Good athletic position for this view.',
+            good: rankedStrengths.length ? rankedStrengths.join(', ') : 'effort and camera view',
+            fix: topIssue ? topIssue.fix : 'keep same shape',
+            cue: topIssue ? topIssue.cue : 'Repeat that shape next rep.',
+            drill: topIssue ? topIssue.drill : this.defaultDrill(runType),
+            score,
+            confidence: metrics.poseScore < 0.45 ? 'medium' : 'high',
+            strengths: rankedStrengths,
+            fixes: rankedIssues.slice(0, 3).map(issue => issue.fix),
+            issues: rankedIssues.slice(0, 4),
             leanLabel,
             kneeLabel,
             baseLabel,
@@ -777,42 +784,157 @@ class SideTracker {
         };
     }
 
-    addCuttingFeedback(notes, good, metrics, runType) {
+    addAccelerationFeedback(issues, strengths, metrics) {
+        let leanLabel = 'good projection';
+        let kneeLabel = 'loaded first step';
+        let baseLabel = 'compact strike';
+
+        if (metrics.trunkLeanDeg < 10) {
+            leanLabel = 'too upright';
+            this.addIssue(issues, 'upright-accel', 'Start posture is too upright', 'Start with more forward body angle so the first steps push back instead of popping up.', 'Push the ground back for the first three steps.', 'Wall-drive marches', 5, metrics.poseScore, 'first steps');
+        } else if (metrics.trunkLeanDeg > 34) {
+            leanLabel = 'falling forward';
+            this.addIssue(issues, 'overlean-accel', 'Body angle is too folded', 'Control the forward lean so the hips can keep driving through the sprint.', 'Lean from the ankles, not by folding at the waist.', 'Falling starts', 3, metrics.poseScore, 'first steps');
+        } else {
+            strengths.push('good forward projection');
+        }
+
+        if (metrics.kneeAngleDeg > 165) {
+            kneeLabel = 'too tall';
+            this.addIssue(issues, 'tall-first-step', 'First steps look too tall', 'Stay loaded through the hips and knees before pushing out.', 'Push low, then rise gradually.', 'Three-step wall drive', 4, metrics.poseScore, 'first steps');
+        } else if (metrics.kneeAngleDeg < 112) {
+            kneeLabel = 'sitting low';
+            this.addIssue(issues, 'sitting-accel', 'Start position looks too low', 'Rise slightly so the first step can attack backward through the ground.', 'Hips up before you push.', 'Two-point start holds', 3, metrics.poseScore, 'setup');
+        } else {
+            strengths.push('loaded knee position');
+        }
+
+        if (metrics.footReachPct > 115) {
+            baseLabel = 'reaching stride';
+            this.addIssue(issues, 'overstride', 'Foot appears to reach too far ahead of the hips', 'Bring the foot strike closer under the hip so the next step can push backward faster.', 'Step down and back under the hip.', 'A-march to acceleration', 5, metrics.poseScore, 'foot strike');
+        } else {
+            strengths.push('foot strike stays close to hips');
+        }
+
+        if (metrics.shinAngleDeg < 10 && metrics.trunkLeanDeg < 16) {
+            this.addIssue(issues, 'shin-angle', 'Shin angle looks too vertical for acceleration', 'Create a lower push angle on the first steps so projection goes forward.', 'Shin and chest point where you want to go.', 'Wall-drive switches', 4, metrics.poseScore, 'first steps');
+        } else {
+            strengths.push('shin angle supports forward push');
+        }
+
+        return { leanLabel, kneeLabel, baseLabel };
+    }
+
+    addGeneralMovementFeedback(issues, strengths, metrics, runType) {
+        let leanLabel = 'good lean';
+        let kneeLabel = 'athletic bend';
+        let baseLabel = 'stable setup';
+
+        if (metrics.trunkLeanDeg < 8) {
+            leanLabel = 'too upright';
+            this.addIssue(issues, 'upright', 'Body position is too upright', 'Use a little more forward angle before the movement.', 'Chest leads the first step.', this.defaultDrill(runType), 3, metrics.poseScore, 'setup');
+        } else if (metrics.trunkLeanDeg > 32) {
+            leanLabel = 'over leaning';
+            this.addIssue(issues, 'overlean', 'Body position is folded too far forward', 'Control the lean so the hips stay under you.', 'Tall hips, strong chest.', this.defaultDrill(runType), 3, metrics.poseScore, 'setup');
+        } else {
+            strengths.push('controlled body angle');
+        }
+
+        if (metrics.kneeAngleDeg > 165) {
+            kneeLabel = 'knees straight';
+            this.addIssue(issues, 'straight-knees', 'Legs are too straight', 'Load the hips and knees before pushing.', 'Load, then go.', this.defaultDrill(runType), 3, metrics.poseScore, 'setup');
+        } else if (metrics.kneeAngleDeg < 120) {
+            kneeLabel = 'very deep';
+            this.addIssue(issues, 'too-deep', 'Setup is too deep', 'Rise slightly so you can push out cleanly.', 'Hips up before the push.', this.defaultDrill(runType), 2, metrics.poseScore, 'setup');
+        } else {
+            strengths.push('athletic knee bend');
+        }
+
+        if (metrics.stanceWidthPct < 6) {
+            baseLabel = 'feet close';
+            this.addIssue(issues, 'narrow-setup', 'Feet are too close for a strong push', 'Create enough space between the feet to push without crossing over.', 'Split the feet before you go.', this.defaultDrill(runType), 2, metrics.poseScore, 'setup');
+        } else {
+            strengths.push('balanced setup');
+        }
+
+        return { leanLabel, kneeLabel, baseLabel };
+    }
+
+    addCuttingFeedback(issues, strengths, metrics, runType) {
         const plantSide = runType === 'LEFT' ? 'right' : 'left';
         const plantKneeStackPct = plantSide === 'right' ? metrics.rightKneeStackPct : metrics.leftKneeStackPct;
         const plantKneeInsidePct = plantSide === 'right' ? metrics.rightKneeInsidePct : metrics.leftKneeInsidePct;
         const plantKneeAngle = plantSide === 'right' ? metrics.rightKneeAngleDeg : metrics.leftKneeAngleDeg;
         const tiltMismatch = Math.abs(metrics.shoulderTiltDeg - metrics.hipTiltDeg);
+        let leanLabel = 'chest controlled';
+        let kneeLabel = `${plantSide} plant loaded`;
+        let baseLabel = 'plant width ok';
 
         if (plantKneeInsidePct > 35) {
-            notes.push(`${plantSide} knee collapsing in`);
+            kneeLabel = `${plantSide} knee inside`;
+            this.addIssue(issues, 'knee-collapse', `${plantSide} knee moves inside the foot`, `On the ${runType.toLowerCase()} cut, keep the ${plantSide} knee stacked closer over the foot so the plant is more stable.`, `Show the ${plantSide} knee to the toes, then exit.`, 'Slow plant-and-exit cuts', 5, metrics.poseScore, 'plant frame');
         } else if (plantKneeStackPct > 55) {
-            notes.push(`Stack ${plantSide} knee over foot`);
+            kneeLabel = `${plantSide} knee offset`;
+            this.addIssue(issues, 'knee-stack', `${plantSide} knee is not stacked over the plant`, `Clean up the plant so the ${plantSide} knee and foot point the same direction before exiting.`, `Knee over laces on the plant.`, 'Cone plant holds', 4, metrics.poseScore, 'plant frame');
         } else {
-            good.push(`${plantSide} knee stack`);
+            strengths.push(`${plantSide} knee stacks over plant`);
         }
 
         if (plantKneeAngle > 160) {
-            notes.push(`Load ${plantSide} knee more`);
+            kneeLabel = `${plantSide} plant tall`;
+            this.addIssue(issues, 'tall-plant', `${plantSide} plant is too tall`, `Load the ${plantSide} hip and knee earlier so the cut is not a stiff step.`, `Lower into the plant before you leave.`, 'Decel-to-plant reps', 4, metrics.poseScore, 'plant frame');
         } else if (plantKneeAngle < 120) {
-            notes.push(`Do not sink so deep on ${plantSide}`);
+            kneeLabel = `${plantSide} plant deep`;
+            this.addIssue(issues, 'deep-plant', `${plantSide} plant is too deep`, `Do not sink so deep on the ${plantSide} plant; stay springy enough to re-accelerate.`, `Touch down, then get out.`, 'Snap-down cut exits', 3, metrics.poseScore, 'plant frame');
         } else {
-            good.push(`${plantSide} plant bend`);
+            strengths.push(`${plantSide} plant has useful bend`);
         }
 
         if (metrics.shoulderHipOffsetPct > 65) {
-            notes.push('Keep chest over hips');
+            leanLabel = 'chest drifting';
+            this.addIssue(issues, 'chest-drift', 'Chest drifts away from the hips', 'Keep chest and hips connected through the plant so the exit step is cleaner.', 'Chest over hips through the cut.', 'Mirror shuffle cuts', 4, metrics.poseScore, 'plant frame');
         } else {
-            good.push('chest over hips');
+            strengths.push('chest stays connected to hips');
         }
 
         if (tiltMismatch > 12) {
-            notes.push('Keep shoulders and hips connected');
+            this.addIssue(issues, 'tilt-mismatch', 'Shoulders and hips tilt differently', 'Keep the shoulders and hips turning together so the cut does not leak sideways.', 'Turn the whole body together.', 'Walk-through angle cuts', 3, metrics.poseScore, 'plant frame');
         }
 
         if (metrics.stanceWidthPct < 10) {
-            notes.push(`Widen plant for ${runType.toLowerCase()} cut`);
+            baseLabel = 'plant too close';
+            this.addIssue(issues, 'narrow-plant', 'Plant foot is too close to the body', `Place the ${plantSide} plant a little wider so the athlete can redirect without crossing over.`, 'Plant outside the hip, then punch out.', 'Lateral bound to stick', 3, metrics.poseScore, 'plant frame');
+        } else {
+            strengths.push('plant gives room to redirect');
         }
+
+        return { leanLabel, kneeLabel, baseLabel };
+    }
+
+    addIssue(issues, key, label, fix, cue, drill, severity, confidence, moment) {
+        issues.push({ key, label, fix, cue, drill, severity, confidence, moment });
+    }
+
+    rankIssues(issues) {
+        return [...issues].sort((a, b) => {
+            const aScore = a.severity * (a.confidence || 0.5);
+            const bScore = b.severity * (b.confidence || 0.5);
+            return bScore - aScore;
+        });
+    }
+
+    scoreFeedback(metrics, issues) {
+        const penalty = issues.reduce((total, issue) => total + (issue.severity * 7), 0);
+        const confidencePenalty = metrics.poseScore < 0.45 ? 8 : 0;
+        return Math.max(40, Math.min(100, Math.round(94 - penalty - confidencePenalty)));
+    }
+
+    defaultDrill(runType) {
+        if (runType === 'GO') return 'Wall-drive marches';
+        if (runType === 'LEFT' || runType === 'RIGHT') return 'Slow plant-and-exit cuts';
+        if (runType === 'DROP') return 'Snap-down to sprint';
+        if (runType === 'TURN') return 'Walk-through turn exits';
+        return 'Controlled technique rep';
     }
 
     async saveTrackingSample(metrics, feedback, runType) {
@@ -829,6 +951,7 @@ class SideTracker {
             repId: this.activeRep.repId,
             cue: this.activeRep.cue,
             runType,
+            sampleMs: this.getActiveRepSampleMs(),
             metrics,
             feedback,
             source: 'side-tracker',
@@ -856,6 +979,22 @@ class SideTracker {
                 feedback: {
                     good: 'camera connected',
                     fix: 'keep torso and one full leg visible',
+                    cue: 'Fill the frame before the next rep.',
+                    drill: 'Camera setup rep before testing',
+                    score: 0,
+                    confidence: 'low',
+                    strengths: ['camera connected'],
+                    fixes: ['tracking confidence was too low'],
+                    issues: [{
+                        key: 'no-clean-samples',
+                        label: 'No clean pose samples captured',
+                        fix: 'Keep torso, hips, knee, and foot visible during the whole rep.',
+                        cue: 'Fill the frame before the next rep.',
+                        drill: 'Camera setup rep before testing',
+                        severity: 5,
+                        confidence: 0,
+                        moment: 'whole rep'
+                    }],
                     message: 'No clear pose samples captured',
                     runType: rep.cue
                 }
@@ -908,34 +1047,75 @@ class SideTracker {
 
     buildRepFeedbackSummary(rep, samples) {
         const runType = samples[samples.length - 1]?.runType || rep.cue;
-        const issueCounts = new Map();
+        const issueMap = new Map();
         const goodCounts = new Map();
 
         samples.forEach(sample => {
-            String(sample.feedback.fix || '')
-                .split(',')
-                .map(item => item.trim())
-                .filter(Boolean)
-                .forEach(item => issueCounts.set(item, (issueCounts.get(item) || 0) + 1));
+            (sample.feedback.issues || []).forEach(issue => {
+                const key = issue.key || issue.fix;
+                const existing = issueMap.get(key) || {
+                    ...issue,
+                    count: 0,
+                    score: 0,
+                    bestMoment: issue.moment || this.formatSampleMoment(sample.sampleMs),
+                    momentMs: sample.sampleMs
+                };
+                const weightedSeverity = (issue.severity || 1) * (issue.confidence || sample.metrics.poseScore || 0.5);
+                existing.count += 1;
+                existing.score += weightedSeverity;
+                if (weightedSeverity >= (existing.bestWeightedSeverity || 0)) {
+                    existing.bestWeightedSeverity = weightedSeverity;
+                    existing.bestMoment = issue.moment || this.formatSampleMoment(sample.sampleMs);
+                    existing.momentMs = sample.sampleMs;
+                }
+                issueMap.set(key, existing);
+            });
 
-            String(sample.feedback.good || '')
-                .split(',')
-                .map(item => item.trim())
+            (sample.feedback.strengths || String(sample.feedback.good || '').split(','))
+                .map(item => String(item).trim())
                 .filter(Boolean)
                 .forEach(item => goodCounts.set(item, (goodCounts.get(item) || 0) + 1));
         });
 
-        const topIssue = this.topCount(issueCounts) || 'keep same shape';
-        const topGood = this.topCount(goodCounts) || 'camera view';
+        const rankedIssues = [...issueMap.values()]
+            .map(issue => ({ ...issue, rankScore: issue.score + issue.count * 0.5 }))
+            .sort((a, b) => b.rankScore - a.rankScore)
+            .slice(0, 3);
+        const topIssue = rankedIssues[0] || null;
+        const strengths = this.topCounts(goodCounts, 3);
         const metrics = samples[samples.length - 1].metrics;
+        const averageScore = Math.round(this.average(samples.map(sample => sample.feedback.score || 70)));
+        const averageConfidence = this.average(samples.map(sample => sample.metrics.poseScore || 0));
+        const confidence = averageConfidence < 0.35 ? 'low' : averageConfidence < 0.55 ? 'medium' : 'high';
+        const defaultCue = runType === 'GO'
+            ? 'Push back through the ground for the first three steps.'
+            : 'Clean up the plant before you exit.';
+        const defaultDrill = this.defaultDrill(runType);
 
         return {
             runType,
             metrics,
             feedback: {
-                message: topIssue === 'keep same shape' ? 'Good athletic position' : topIssue,
-                good: topGood,
-                fix: topIssue,
+                message: topIssue ? `${topIssue.fix} (${topIssue.bestMoment}).` : 'Good athletic position for this camera view.',
+                good: strengths.length ? strengths.join(', ') : 'camera view',
+                fix: topIssue ? topIssue.fix : 'keep same shape',
+                cue: topIssue ? topIssue.cue : defaultCue,
+                drill: topIssue ? topIssue.drill : defaultDrill,
+                score: averageScore,
+                confidence,
+                strengths,
+                fixes: rankedIssues.map(issue => issue.fix),
+                issues: rankedIssues.map(issue => ({
+                    key: issue.key,
+                    label: issue.label,
+                    fix: issue.fix,
+                    cue: issue.cue,
+                    drill: issue.drill,
+                    severity: issue.severity,
+                    count: issue.count,
+                    moment: issue.bestMoment,
+                    momentMs: issue.momentMs
+                })),
                 runType
             }
         };
@@ -951,6 +1131,30 @@ class SideTracker {
             }
         });
         return best;
+    }
+
+    topCounts(counts, limit = 3) {
+        return [...counts.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, limit)
+            .map(([label]) => label);
+    }
+
+    average(values) {
+        const cleanValues = values.filter(Number.isFinite);
+        if (cleanValues.length === 0) return 0;
+        return cleanValues.reduce((sum, value) => sum + value, 0) / cleanValues.length;
+    }
+
+    getActiveRepSampleMs() {
+        const startedAt = Date.parse(this.activeRep?.cueStartedAt || '');
+        if (!Number.isFinite(startedAt)) return null;
+        return Math.max(0, Date.now() - startedAt);
+    }
+
+    formatSampleMoment(sampleMs) {
+        if (!Number.isFinite(sampleMs)) return 'tracked moment';
+        return `${(sampleMs / 1000).toFixed(1)}s`;
     }
 
     stopTracking() {
@@ -998,6 +1202,10 @@ class SideTracker {
 
     segmentTiltDeg(a, b) {
         return Math.abs(Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI);
+    }
+
+    segmentVerticalTiltDeg(a, b) {
+        return Math.abs(Math.atan2(b.x - a.x, b.y - a.y) * 180 / Math.PI);
     }
 
     getPoseScore(landmarks, runType = 'AUTO') {

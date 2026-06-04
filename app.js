@@ -26,6 +26,13 @@ class RepData {
         this.coachGood = '';
         this.coachFix = '';
         this.coachRunType = '';
+        this.coachCue = '';
+        this.coachDrill = '';
+        this.coachScore = '';
+        this.coachConfidence = '';
+        this.coachMoment = '';
+        this.coachStrengths = [];
+        this.coachFixes = [];
         this.notes = '';
     }
 
@@ -57,12 +64,17 @@ class RepData {
             this.coachRunType || '',
             this.coachGood || '',
             this.coachFix || '',
+            this.coachCue || '',
+            this.coachDrill || '',
+            this.coachScore || '',
+            this.coachConfidence || '',
+            this.coachMoment || '',
             this.notes
         ].map(RepData.toCSVCell).join(',');
     }
 
     static toCSVHeader() {
-        return 'rep_id,timestamp,cue,cue_start_ms,first_movement_ms,finish_ms,reaction_ms,movement_ms,total_ms,timing_mode,motion_start_ms,coach_run_type,coach_good,coach_fix,notes';
+        return 'rep_id,timestamp,cue,cue_start_ms,first_movement_ms,finish_ms,reaction_ms,movement_ms,total_ms,timing_mode,motion_start_ms,coach_run_type,coach_good,coach_fix,coach_cue,coach_drill,coach_score,coach_confidence,coach_moment,notes';
     }
 
     static toCSVCell(value) {
@@ -1024,7 +1036,19 @@ class CueCutApp {
         this.currentRepData.coachRunType = latestFeedback.runType || latestFeedback.cue || '';
         this.currentRepData.coachGood = latestFeedback.feedback.good || '';
         this.currentRepData.coachFix = latestFeedback.feedback.fix || latestFeedback.feedback.message || '';
+        this.currentRepData.coachCue = latestFeedback.feedback.cue || '';
+        this.currentRepData.coachDrill = latestFeedback.feedback.drill || '';
+        this.currentRepData.coachScore = Number.isFinite(latestFeedback.feedback.score) ? latestFeedback.feedback.score : '';
+        this.currentRepData.coachConfidence = latestFeedback.feedback.confidence || '';
+        this.currentRepData.coachStrengths = latestFeedback.feedback.strengths || [];
+        this.currentRepData.coachFixes = latestFeedback.feedback.fixes || [];
+        const topIssue = latestFeedback.feedback.issues?.[0];
+        this.currentRepData.coachMoment = topIssue?.moment || '';
         this.storage.saveRep(this.currentRepData);
+        this.cloud.saveRep(this.currentRepData, {
+            sessionCode: this.currentSessionCode,
+            startedAt: this.getSessionStartedAt(this.currentSessionId)
+        });
     }
 
     updateTrackerSyncStatus(trackerState) {
@@ -1050,9 +1074,11 @@ class CueCutApp {
 
         const feedback = this.currentCoachFeedback.feedback;
         const runType = this.currentCoachFeedback.runType || this.currentCoachFeedback.cue || 'run';
-        const message = feedback.fix || feedback.message;
+        const cue = feedback.cue || feedback.fix || feedback.message;
+        const score = Number.isFinite(feedback.score) ? ` ${feedback.score}/100.` : '';
+        const moment = feedback.issues?.[0]?.moment ? ` ${feedback.issues[0].moment}.` : '';
 
-        coachEl.textContent = `${runType}: ${message}`;
+        coachEl.textContent = `${runType}:${score} ${cue}${moment}`;
     }
 
     speakCoachFeedback(latestFeedback) {
@@ -1067,9 +1093,9 @@ class CueCutApp {
         }
 
         this.lastCoachFeedbackKey = key;
-        const spokenCue = feedback.fix || feedback.message;
+        const spokenCue = feedback.cue || feedback.fix || feedback.message;
 
-        this.audio.playFeedback(`Fix. ${spokenCue}`);
+        this.audio.playFeedback(`Coach cue. ${spokenCue}`);
     }
 
     getScoreNoteForRep(rep) {
@@ -1130,8 +1156,9 @@ class CueCutApp {
         const avgMovementMs = movementTimes.length > 0 ? movementTimes.reduce((a, b) => a + b, 0) / movementTimes.length : 0;
         const fatigue = this.calculateFatigue(reps);
         const trackedReps = reps.filter(rep => rep.coachFix).length;
+        const coachSummary = this.calculateCoachSummary(reps);
 
-        return { totalReps, trackedReps, avgReactionMs, bestReactionMs, avgMovementMs, fatigue };
+        return { totalReps, trackedReps, avgReactionMs, bestReactionMs, avgMovementMs, fatigue, coachSummary };
     }
 
     showSummary(stats, sessionReps) {
@@ -1140,9 +1167,46 @@ class CueCutApp {
         document.getElementById('summaryAvgReaction').textContent = stats.avgReactionMs > 0 ? `${(stats.avgReactionMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('summaryBestReaction').textContent = stats.bestReactionMs > 0 ? `${(stats.bestReactionMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('summaryFatigue').textContent = stats.fatigue;
+        const focusEl = document.getElementById('summaryCoachFocus');
+        if (focusEl) {
+            focusEl.textContent = stats.coachSummary?.focus || 'No coach data yet';
+        }
 
         this.drawChart(sessionReps);
         this.goToScreen('summaryScreen');
+    }
+
+    calculateCoachSummary(reps) {
+        const tracked = reps.filter(rep => rep.coachFix || rep.coachCue);
+        if (tracked.length === 0) {
+            return { focus: 'No coach data yet' };
+        }
+
+        const issueCounts = new Map();
+        tracked.forEach(rep => {
+            const fixes = Array.isArray(rep.coachFixes) && rep.coachFixes.length
+                ? rep.coachFixes
+                : [rep.coachFix].filter(Boolean);
+            fixes.forEach(fix => {
+                const key = String(fix).trim();
+                if (!key) return;
+                issueCounts.set(key, (issueCounts.get(key) || 0) + 1);
+            });
+        });
+
+        const mainIssue = [...issueCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+        const bestRep = tracked
+            .filter(rep => Number.isFinite(Number(rep.coachScore)))
+            .sort((a, b) => Number(b.coachScore) - Number(a.coachScore))[0];
+        const bestText = bestRep ? ` Best tracked rep: ${bestRep.cue} ${bestRep.coachScore}/100.` : '';
+
+        if (!mainIssue) {
+            return { focus: `Main focus: repeat the best body shape.${bestText}` };
+        }
+
+        return {
+            focus: `Main focus: ${mainIssue[0]} (${mainIssue[1]}/${tracked.length} tracked reps).${bestText}`
+        };
     }
 
     calculateFatigue(reps) {
@@ -1277,14 +1341,19 @@ class CueCutApp {
             <div>
                 <strong>${this.formatSessionDate(sessionId, sessionReps)}</strong><br>
                 Reps: ${stats.totalReps} | Tracked: ${stats.trackedReps}/${stats.totalReps}<br>
-                    Fatigue: ${stats.fatigue}
+                    Fatigue: ${stats.fatigue}<br>
+                    Focus: ${stats.coachSummary?.focus || 'No coach data yet'}
             </div>
         </div>`;
 
         html += '<div class="session-details">';
         sessionReps.forEach((rep, index) => {
             const reaction = rep.reactionMs ? (rep.reactionMs / 1000).toFixed(2) + 's' : '-';
-            const coachNote = rep.coachFix ? ` | Fix: ${rep.coachFix}` : ' | No coach data';
+            const score = rep.coachScore !== '' && rep.coachScore !== undefined ? ` | Coach: ${rep.coachScore}/100` : '';
+            const cue = rep.coachCue ? ` | Cue: ${rep.coachCue}` : '';
+            const drill = rep.coachDrill ? ` | Drill: ${rep.coachDrill}` : '';
+            const moment = rep.coachMoment ? ` | Moment: ${rep.coachMoment}` : '';
+            const coachNote = rep.coachFix ? `${score} | Fix: ${rep.coachFix}${cue}${drill}${moment}` : ' | No coach data';
             html += `<div class="data-item">
                 <div><strong>${index + 1}. ${rep.cue}</strong> | ${reaction}${coachNote}</div>
             </div>`;
