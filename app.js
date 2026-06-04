@@ -569,6 +569,7 @@ class CueCutApp {
         this.currentFeedbackScoreNote = null;
         this.currentCoachFeedback = null;
         this.lastCoachFeedbackKey = null;
+        this.processedCoachFeedbackKeys = new Set();
         this.coachFeedbackFallbackTimer = null;
         this.latestTrackerState = null;
         this.sessionUnsubscribe = null;
@@ -797,6 +798,7 @@ class CueCutApp {
         this.currentSummarySessionId = this.currentSessionId;
         this.currentCoachFeedback = null;
         this.lastCoachFeedbackKey = null;
+        this.processedCoachFeedbackKeys.clear();
         this.cloud.saveSession({
             sessionId: this.currentSessionId,
             sessionCode: this.currentSessionCode,
@@ -850,11 +852,23 @@ class CueCutApp {
         }
 
         const latestFeedback = sessionData.latestTrackingFeedback;
-        if (latestFeedback?.repId && latestFeedback.repId === this.currentRepData?.id) {
-            this.currentCoachFeedback = latestFeedback;
-            this.attachCoachFeedbackToCurrentRep(latestFeedback);
-            this.updateCoachFeedbackDisplay();
-            this.speakCoachFeedback(latestFeedback);
+        if (latestFeedback?.repId) {
+            const feedbackKey = this.getCoachFeedbackKey(latestFeedback);
+            const alreadyProcessed = this.processedCoachFeedbackKeys.has(feedbackKey);
+            const updatedRep = alreadyProcessed ? null : this.attachCoachFeedbackToRep(latestFeedback);
+            if (!alreadyProcessed) {
+                this.processedCoachFeedbackKeys.add(feedbackKey);
+            }
+
+            if (latestFeedback.repId === this.currentRepData?.id) {
+                this.currentCoachFeedback = latestFeedback;
+            }
+            if (latestFeedback.repId === this.currentRepData?.id) {
+                this.updateCoachFeedbackDisplay();
+                if (updatedRep) {
+                    this.speakCoachFeedback(latestFeedback);
+                }
+            }
         }
 
         if (sessionData.latestTrackerState) {
@@ -891,6 +905,9 @@ class CueCutApp {
 
     goToReady() {
         this.currentRepData = null;
+        this.currentCoachFeedback = null;
+        this.lastCoachFeedbackKey = null;
+        clearTimeout(this.coachFeedbackFallbackTimer);
         const sessionCodeEl = document.getElementById('readySessionCode');
         if (sessionCodeEl) {
             sessionCodeEl.textContent = this.currentSessionCode || '----';
@@ -1061,25 +1078,42 @@ class CueCutApp {
         }
     }
 
-    attachCoachFeedbackToCurrentRep(latestFeedback) {
-        if (!this.currentRepData || !latestFeedback?.feedback) return;
+    attachCoachFeedbackToRep(latestFeedback) {
+        if (!latestFeedback?.repId || !latestFeedback?.feedback) return null;
 
-        this.currentRepData.coachRunType = latestFeedback.runType || latestFeedback.cue || '';
-        this.currentRepData.coachGood = latestFeedback.feedback.good || '';
-        this.currentRepData.coachFix = latestFeedback.feedback.fix || latestFeedback.feedback.message || '';
-        this.currentRepData.coachCue = latestFeedback.feedback.cue || '';
-        this.currentRepData.coachDrill = latestFeedback.feedback.drill || '';
-        this.currentRepData.coachScore = Number.isFinite(latestFeedback.feedback.score) ? latestFeedback.feedback.score : '';
-        this.currentRepData.coachConfidence = latestFeedback.feedback.confidence || '';
-        this.currentRepData.coachStrengths = latestFeedback.feedback.strengths || [];
-        this.currentRepData.coachFixes = latestFeedback.feedback.fixes || [];
+        const targetRep = this.currentRepData?.id === latestFeedback.repId
+            ? this.currentRepData
+            : this.storage.getAllReps().find(rep => rep.id === latestFeedback.repId);
+
+        if (!targetRep) return null;
+
+        targetRep.coachRunType = latestFeedback.runType || latestFeedback.cue || '';
+        targetRep.coachGood = latestFeedback.feedback.good || '';
+        targetRep.coachFix = latestFeedback.feedback.fix || latestFeedback.feedback.message || '';
+        targetRep.coachCue = latestFeedback.feedback.cue || '';
+        targetRep.coachDrill = latestFeedback.feedback.drill || '';
+        targetRep.coachScore = Number.isFinite(latestFeedback.feedback.score) ? latestFeedback.feedback.score : '';
+        targetRep.coachConfidence = latestFeedback.feedback.confidence || '';
+        targetRep.coachStrengths = latestFeedback.feedback.strengths || [];
+        targetRep.coachFixes = latestFeedback.feedback.fixes || [];
         const topIssue = latestFeedback.feedback.issues?.[0];
-        this.currentRepData.coachMoment = topIssue?.moment || '';
-        this.storage.saveRep(this.currentRepData);
-        this.cloud.saveRep(this.currentRepData, {
+        targetRep.coachMoment = topIssue?.moment || '';
+        this.storage.saveRep(targetRep);
+        this.cloud.saveRep(targetRep, {
             sessionCode: this.currentSessionCode,
-            startedAt: this.getSessionStartedAt(this.currentSessionId)
+            startedAt: this.getSessionStartedAt(targetRep.sessionId)
         });
+        return targetRep;
+    }
+
+    getCoachFeedbackKey(latestFeedback) {
+        const feedback = latestFeedback.feedback || {};
+        return [
+            latestFeedback.repId,
+            feedback.score ?? '',
+            feedback.cue || '',
+            feedback.fix || feedback.message || ''
+        ].join('|');
     }
 
     updateTrackerSyncStatus(trackerState) {

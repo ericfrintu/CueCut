@@ -97,6 +97,8 @@ class SideTracker {
         this.sessionUnsubscribe = null;
         this.activeRep = null;
         this.activeRepSamples = [];
+        this.samplesByRepId = new Map();
+        this.lastSaveMsByRepId = new Map();
         this.lastTrackerStateKey = null;
         this.selectedRunType = 'AUTO';
         this.isTracking = false;
@@ -270,12 +272,19 @@ class SideTracker {
             const repToFinalize = this.activeRep;
             this.setTrackerState('finalizing', { cue: repToFinalize.cue, repId: repToFinalize.repId });
             this.finalizeRepFeedback(repToFinalize).finally(() => {
-                this.setTrackerState(this.isTracking ? 'camera on' : 'connected');
+                if (this.activeRep) {
+                    this.setTrackerState('recording', { cue: this.activeRep.cue, repId: this.activeRep.repId });
+                } else {
+                    this.setTrackerState(this.isTracking ? 'camera on' : 'connected');
+                }
             });
         }
 
         if (nextActiveRep && nextActiveRep.repId !== this.activeRep?.repId) {
-            this.activeRepSamples = [];
+            const samples = [];
+            this.samplesByRepId.set(nextActiveRep.repId, samples);
+            this.activeRepSamples = samples;
+            this.lastSaveMsByRepId.set(nextActiveRep.repId, 0);
             this.lastSaveMs = 0;
             this.updateCaptureBadge(0);
         }
@@ -944,15 +953,18 @@ class SideTracker {
         if (!this.sessionId || !this.activeRep?.repId) return;
         if (metrics.poseScore < MIN_TRACKING_POSE_SCORE) return;
 
+        const rep = this.activeRep;
         const now = performance.now();
-        if (now - this.lastSaveMs < 250) return;
+        const lastSaveMs = this.lastSaveMsByRepId.get(rep.repId) || 0;
+        if (now - lastSaveMs < 250) return;
+        this.lastSaveMsByRepId.set(rep.repId, now);
         this.lastSaveMs = now;
 
         const sample = {
             sessionId: this.sessionId,
             sessionCode: this.sessionCode,
-            repId: this.activeRep.repId,
-            cue: this.activeRep.cue,
+            repId: rep.repId,
+            cue: rep.cue,
             runType,
             sampleMs: this.getActiveRepSampleMs(),
             metrics,
@@ -961,11 +973,13 @@ class SideTracker {
             createdAt: serverTimestamp()
         };
 
-        this.activeRepSamples.push(sample);
-        this.updateCaptureBadge(this.activeRepSamples.length);
+        const samples = this.getRepSamples(rep.repId);
+        samples.push(sample);
+        this.activeRepSamples = samples;
+        this.updateCaptureBadge(samples.length);
 
         try {
-            await addDoc(collection(this.db, 'sessions', this.sessionId, 'reps', this.activeRep.repId, 'trackingSamples'), sample);
+            await addDoc(collection(this.db, 'sessions', this.sessionId, 'reps', rep.repId, 'trackingSamples'), sample);
         } catch (error) {
             console.warn('Tracking sample save failed:', error);
             this.setStatus('Tracking locally, but Firestore save failed.');
@@ -974,8 +988,9 @@ class SideTracker {
 
     async finalizeRepFeedback(rep) {
         if (!this.sessionId || !rep?.repId) return;
+        const samples = this.getRepSamples(rep.repId).slice();
 
-        if (this.activeRepSamples.length === 0) {
+        if (samples.length === 0) {
             const summary = {
                 runType: rep.cue,
                 metrics: null,
@@ -1005,15 +1020,16 @@ class SideTracker {
             this.showFinalCoachFeedback(summary);
             this.updateCaptureBadge(0, 'No clean samples');
             await this.publishFinalFeedback(rep, summary);
+            this.clearRepSamples(rep.repId);
             return;
         }
 
-        const summary = this.buildRepFeedbackSummary(rep, this.activeRepSamples);
-        const capturedCount = this.activeRepSamples.length;
-        this.activeRepSamples = [];
+        const summary = this.buildRepFeedbackSummary(rep, samples);
+        const capturedCount = samples.length;
         this.showFinalCoachFeedback(summary);
         this.updateCaptureBadge(capturedCount, `Saved ${capturedCount} samples`);
         await this.publishFinalFeedback(rep, summary);
+        this.clearRepSamples(rep.repId);
     }
 
     async publishFinalFeedback(rep, summary) {
@@ -1046,6 +1062,25 @@ class SideTracker {
     updateCaptureBadge(count, label = null) {
         if (!this.elements.captureBadge) return;
         this.elements.captureBadge.textContent = label || `Captured: ${count} samples`;
+    }
+
+    getRepSamples(repId) {
+        if (!this.samplesByRepId.has(repId)) {
+            this.samplesByRepId.set(repId, []);
+        }
+        return this.samplesByRepId.get(repId);
+    }
+
+    clearRepSamples(repId) {
+        this.samplesByRepId.delete(repId);
+        this.lastSaveMsByRepId.delete(repId);
+        if (this.activeRep?.repId === repId) {
+            const samples = [];
+            this.samplesByRepId.set(repId, samples);
+            this.activeRepSamples = samples;
+            return;
+        }
+        this.activeRepSamples = this.activeRep?.repId ? this.getRepSamples(this.activeRep.repId) : [];
     }
 
     buildRepFeedbackSummary(rep, samples) {
