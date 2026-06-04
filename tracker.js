@@ -83,6 +83,9 @@ const RUN_GUIDANCE = {
     }
 };
 
+const MIN_TRACKING_POSE_SCORE = 0.25;
+const LANDMARK_VISIBLE_THRESHOLD = 0.2;
+
 class SideTracker {
     constructor() {
         this.db = getFirestore(initializeApp(firebaseConfig));
@@ -600,8 +603,8 @@ class SideTracker {
             return;
         }
 
-        const metrics = this.calculateMetrics(landmarks);
         const runType = this.getEffectiveRunType();
+        const metrics = this.calculateMetrics(landmarks, runType);
         const feedback = this.buildFeedback(metrics, runType);
 
         this.elements.bodyFeedback.textContent = feedback.message;
@@ -641,7 +644,7 @@ class SideTracker {
         });
     }
 
-    calculateMetrics(landmarks) {
+    calculateMetrics(landmarks, runType = 'AUTO') {
         const shoulder = this.midpoint(landmarks[11], landmarks[12]);
         const hip = this.midpoint(landmarks[23], landmarks[24]);
         const leftKneeAngle = this.angleBetween(landmarks[23], landmarks[25], landmarks[27]);
@@ -675,7 +678,7 @@ class SideTracker {
             hipTiltDeg,
             shoulderHipOffsetPct,
             hipHeightPct: hip.y * 100,
-            poseScore: this.getPoseScore(landmarks)
+            poseScore: this.getPoseScore(landmarks, runType)
         };
     }
 
@@ -706,11 +709,11 @@ class SideTracker {
         const notes = [];
         const good = [];
 
-        if (metrics.poseScore < 0.45) {
+        if (metrics.poseScore < MIN_TRACKING_POSE_SCORE) {
             return {
                 message: 'Body partly out of frame.',
                 good: 'camera connected',
-                fix: 'step fully into frame',
+                fix: 'keep torso and one full leg in frame',
                 leanLabel: 'low confidence',
                 kneeLabel: 'low confidence',
                 baseLabel: 'low confidence',
@@ -814,7 +817,7 @@ class SideTracker {
 
     async saveTrackingSample(metrics, feedback, runType) {
         if (!this.sessionId || !this.activeRep?.repId) return;
-        if (metrics.poseScore < 0.45) return;
+        if (metrics.poseScore < MIN_TRACKING_POSE_SCORE) return;
 
         const now = performance.now();
         if (now - this.lastSaveMs < 250) return;
@@ -852,7 +855,7 @@ class SideTracker {
                 metrics: null,
                 feedback: {
                     good: 'camera connected',
-                    fix: 'move the runner fully into frame',
+                    fix: 'keep torso and one full leg visible',
                     message: 'No clear pose samples captured',
                     runType: rep.cue
                 }
@@ -997,17 +1000,28 @@ class SideTracker {
         return Math.abs(Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI);
     }
 
-    getPoseScore(landmarks) {
-        const importantPoints = [11, 12, 23, 24, 25, 26, 27, 28];
-        const visiblePoints = importantPoints
-            .map(index => landmarks[index]?.visibility || 0)
-            .filter(score => score > 0.35);
+    getPoseScore(landmarks, runType = 'AUTO') {
+        const visibility = index => landmarks[index] ? (landmarks[index].visibility ?? 1) : 0;
+        const isVisible = index => visibility(index) > LANDMARK_VISIBLE_THRESHOLD;
+        const torsoPoints = [11, 12, 23, 24];
+        const legPoints = [25, 26, 27, 28];
+        const importantPoints = [...torsoPoints, ...legPoints];
+        const visibleCount = importantPoints.filter(isVisible).length;
+        const averageVisibility = importantPoints.reduce((total, index) => total + visibility(index), 0) / importantPoints.length;
+        const leftLegVisible = [23, 25, 27].filter(isVisible).length >= 2;
+        const rightLegVisible = [24, 26, 28].filter(isVisible).length >= 2;
+        const torsoVisible = torsoPoints.filter(isVisible).length >= 2;
+        const sideViewRun = ['GO', 'DROP', 'TURN', 'AUTO'].includes(runType);
 
-        return visiblePoints.length / importantPoints.length;
+        if (sideViewRun && torsoVisible && (leftLegVisible || rightLegVisible)) {
+            return Math.max(0.5, averageVisibility);
+        }
+
+        return Math.max(visibleCount / importantPoints.length, averageVisibility);
     }
 
     isVisible(point) {
-        return point && (point.visibility === undefined || point.visibility > 0.35);
+        return point && (point.visibility === undefined || point.visibility > LANDMARK_VISIBLE_THRESHOLD);
     }
 }
 
