@@ -1067,7 +1067,7 @@ class CueCutApp {
 
         const movementTimes = reps.filter(r => r.movementMs !== null).map(r => r.movementMs);
         const avgMovementMs = movementTimes.length > 0 ? movementTimes.reduce((a, b) => a + b, 0) / movementTimes.length : 0;
-        const fatigue = this.calculateFatigue(reactionTimes);
+        const fatigue = this.calculateFatigue(reps);
 
         return { totalReps, avgReactionMs, bestReactionMs, avgMovementMs, fatigue };
     }
@@ -1082,23 +1082,29 @@ class CueCutApp {
         this.goToScreen('summaryScreen');
     }
 
-    calculateFatigue(reactionTimes) {
-        if (reactionTimes.length < 6) {
-            return 'Need 6+ reps';
+    calculateFatigue(reps) {
+        const completedReps = reps.filter(rep => Number.isFinite(rep.reactionMs));
+        const latestRep = completedReps[completedReps.length - 1];
+
+        if (!latestRep) {
+            return 'No fatigue detected';
         }
 
-        const sampleSize = Math.min(5, Math.floor(reactionTimes.length / 2));
-        const earlyAvg = this.average(reactionTimes.slice(0, sampleSize));
-        const lateAvg = this.average(reactionTimes.slice(-sampleSize));
-        const deltaMs = lateAvg - earlyAvg;
+        const previousSameCueRep = [...completedReps]
+            .reverse()
+            .find(rep => rep.id !== latestRep.id && rep.cue === latestRep.cue);
 
-        if (Math.abs(deltaMs) < 10) {
-            return 'Stable';
+        if (!previousSameCueRep) {
+            return `No fatigue detected (${latestRep.cue})`;
         }
 
-        const direction = deltaMs > 0 ? '+' : '-';
-        const label = deltaMs > 0 ? 'slower' : 'faster';
-        return `Last ${sampleSize}: ${direction}${(Math.abs(deltaMs) / 1000).toFixed(2)}s ${label}`;
+        const deltaMs = latestRep.reactionMs - previousSameCueRep.reactionMs;
+
+        if (deltaMs <= 10) {
+            return `No fatigue detected (${latestRep.cue})`;
+        }
+
+        return `${latestRep.cue}: +${(deltaMs / 1000).toFixed(2)}s slower than last ${latestRep.cue}`;
     }
 
     average(values) {
