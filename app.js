@@ -570,6 +570,7 @@ class CueCutApp {
         this.currentCoachFeedback = null;
         this.lastCoachFeedbackKey = null;
         this.coachFeedbackFallbackTimer = null;
+        this.latestTrackerState = null;
         this.sessionUnsubscribe = null;
         this.currentScreen = 'homeScreen';
         this.focusedButton = null;
@@ -857,7 +858,9 @@ class CueCutApp {
         }
 
         if (sessionData.latestTrackerState) {
+            this.latestTrackerState = sessionData.latestTrackerState;
             this.updateTrackerSyncStatus(sessionData.latestTrackerState);
+            this.updatePendingCoachFeedbackStatus(sessionData.latestTrackerState);
         }
     }
 
@@ -1018,6 +1021,11 @@ class CueCutApp {
 
     startCoachFeedbackFallback(repId) {
         clearTimeout(this.coachFeedbackFallbackTimer);
+        const coachEl = document.getElementById('feedbackCoachNote');
+        if (coachEl) {
+            coachEl.textContent = 'Waiting for phone coach cue...';
+        }
+
         this.coachFeedbackFallbackTimer = setTimeout(() => {
             if (this.currentRepData?.id !== repId || this.currentCoachFeedback?.feedback) {
                 return;
@@ -1025,9 +1033,32 @@ class CueCutApp {
 
             const coachEl = document.getElementById('feedbackCoachNote');
             if (coachEl) {
-                coachEl.textContent = 'No phone feedback captured';
+                const trackerState = this.latestTrackerState || {};
+                const trackerWorking = trackerState.repId === repId && ['recording', 'finalizing'].includes(trackerState.status);
+                coachEl.textContent = trackerWorking
+                    ? 'Phone is still finalizing coach cue...'
+                    : 'No phone feedback captured';
             }
-        }, 2000);
+        }, 8000);
+    }
+
+    updatePendingCoachFeedbackStatus(trackerState) {
+        if (this.currentScreen !== 'feedbackScreen' || this.currentCoachFeedback?.feedback || !this.currentRepData) {
+            return;
+        }
+
+        if (trackerState.repId !== this.currentRepData.id) {
+            return;
+        }
+
+        const coachEl = document.getElementById('feedbackCoachNote');
+        if (!coachEl) return;
+
+        if (trackerState.status === 'finalizing') {
+            coachEl.textContent = 'Phone is finalizing coach cue...';
+        } else if (trackerState.status === 'recording') {
+            coachEl.textContent = 'Phone data synced. Waiting for final cue...';
+        }
     }
 
     attachCoachFeedbackToCurrentRep(latestFeedback) {

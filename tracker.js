@@ -267,8 +267,11 @@ class SideTracker {
     handleSessionUpdate(sessionData) {
         const nextActiveRep = sessionData.activeRep?.status === 'active' ? sessionData.activeRep : null;
         if (this.activeRep && (!nextActiveRep || nextActiveRep.repId !== this.activeRep.repId)) {
-            this.finalizeRepFeedback(this.activeRep);
-            this.setTrackerState(this.isTracking ? 'camera on' : 'connected');
+            const repToFinalize = this.activeRep;
+            this.setTrackerState('finalizing', { cue: repToFinalize.cue, repId: repToFinalize.repId });
+            this.finalizeRepFeedback(repToFinalize).finally(() => {
+                this.setTrackerState(this.isTracking ? 'camera on' : 'connected');
+            });
         }
 
         if (nextActiveRep && nextActiveRep.repId !== this.activeRep?.repId) {
