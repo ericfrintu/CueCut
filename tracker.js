@@ -93,6 +93,8 @@ class SideTracker {
         this.PoseLandmarker = null;
         this.sessionUnsubscribe = null;
         this.activeRep = null;
+        this.activeRepSamples = [];
+        this.lastTrackerStateKey = null;
         this.selectedRunType = 'AUTO';
         this.isTracking = false;
         this.isPoseReady = false;
@@ -118,7 +120,11 @@ class SideTracker {
             baseMetricLabel: document.getElementById('baseMetricLabel'),
             cameraPlacement: document.getElementById('cameraPlacement'),
             cameraReads: document.getElementById('cameraReads'),
+            angleWarning: document.getElementById('angleWarning'),
             activeRepStatus: document.getElementById('activeRepStatus'),
+            connectStep: document.getElementById('connectStep'),
+            cameraStep: document.getElementById('cameraStep'),
+            cueStep: document.getElementById('cueStep'),
             settingsSaveStatus: document.getElementById('settingsSaveStatus'),
             trackerGoalSelect: document.getElementById('trackerGoalSelect'),
             trackerDelayMin: document.getElementById('trackerDelayMin'),
@@ -184,6 +190,8 @@ class SideTracker {
             this.sessionCode = code;
             this.elements.startTrackingBtn.disabled = false;
             this.subscribeToSession();
+            this.updateStepStatus({ connected: true });
+            this.setTrackerState('connected');
             this.setStatus(`Connected to session ${code}. Place this device on the athlete's side.`);
         } catch (error) {
             console.error(error);
@@ -241,9 +249,20 @@ class SideTracker {
     }
 
     handleSessionUpdate(sessionData) {
-        this.activeRep = sessionData.activeRep?.status === 'active' ? sessionData.activeRep : null;
+        const nextActiveRep = sessionData.activeRep?.status === 'active' ? sessionData.activeRep : null;
+        if (this.activeRep && (!nextActiveRep || nextActiveRep.repId !== this.activeRep.repId)) {
+            this.finalizeRepFeedback(this.activeRep);
+            this.setTrackerState(this.isTracking ? 'camera on' : 'connected');
+        }
+
+        if (nextActiveRep && nextActiveRep.repId !== this.activeRep?.repId) {
+            this.activeRepSamples = [];
+        }
+
+        this.activeRep = nextActiveRep;
         this.updateActiveRepStatus();
         this.updateCameraGuide();
+        this.updateStepStatus({ cueActive: Boolean(this.activeRep) });
 
         if (sessionData.sessionSettings) {
             this.loadSessionSettings(sessionData.sessionSettings);
@@ -256,7 +275,12 @@ class SideTracker {
             return;
         }
 
-        this.elements.activeRepStatus.textContent = `Recording ${this.activeRep.cue} rep`;
+        if (this.isTracking) {
+            this.elements.activeRepStatus.textContent = `Recording ${this.activeRep.cue} rep`;
+            this.setTrackerState('recording', { cue: this.activeRep.cue, repId: this.activeRep.repId });
+        } else {
+            this.elements.activeRepStatus.textContent = `${this.activeRep.cue} cue active`;
+        }
     }
 
     selectRunType(runType) {
@@ -283,6 +307,61 @@ class SideTracker {
 
         this.elements.cameraPlacement.textContent = guidance.placement;
         this.elements.cameraReads.textContent = `${guidance.reads} ${recordingText}`;
+        this.updateAngleWarning(null, effectiveType);
+    }
+
+    updateStepStatus({ connected, cameraOn, cueActive } = {}) {
+        if (typeof connected === 'boolean') {
+            this.elements.connectStep.classList.toggle('active', connected);
+        }
+        if (typeof cameraOn === 'boolean') {
+            this.elements.cameraStep.classList.toggle('active', cameraOn);
+        }
+        if (typeof cueActive === 'boolean') {
+            this.elements.cueStep.classList.toggle('active', cueActive);
+        }
+    }
+
+    setTrackerState(status, extra = {}) {
+        if (!this.sessionId) return;
+        const stateKey = `${status}_${extra.repId || ''}_${extra.cue || ''}`;
+        if (stateKey === this.lastTrackerStateKey) return;
+
+        this.lastTrackerStateKey = stateKey;
+
+        setDoc(doc(this.db, 'sessions', this.sessionId), {
+            latestTrackerState: {
+                status,
+                ...extra,
+                updatedAt: serverTimestamp()
+            },
+            updatedAt: serverTimestamp()
+        }, { merge: true }).catch(error => {
+            console.warn('Tracker state save failed:', error);
+        });
+    }
+
+    updateAngleWarning(metrics, runType = this.getEffectiveRunType()) {
+        if (!this.elements.angleWarning) return;
+
+        if (!metrics) {
+            this.elements.angleWarning.textContent = runType === 'LEFT' || runType === 'RIGHT'
+                ? 'Angle: use front view for cut form.'
+                : 'Angle: use side or 45-degree view for this run.';
+            return;
+        }
+
+        if ((runType === 'LEFT' || runType === 'RIGHT') && metrics.shoulderHipOffsetPct > 90) {
+            this.elements.angleWarning.textContent = 'Angle warning: athlete may be too side-on for front cut reading.';
+            return;
+        }
+
+        if ((runType === 'GO' || runType === 'DROP') && metrics.shoulderHipOffsetPct < 8) {
+            this.elements.angleWarning.textContent = 'Angle warning: side view works better for this run.';
+            return;
+        }
+
+        this.elements.angleWarning.textContent = 'Angle looks usable.';
     }
 
     loadSessionSettings(sessionSettings) {
@@ -347,6 +426,8 @@ class SideTracker {
             this.elements.trackerPlaceholder.style.display = 'none';
             this.isTracking = true;
             this.elements.stopTrackingBtn.disabled = false;
+            this.updateStepStatus({ cameraOn: true });
+            this.setTrackerState('camera on');
             this.setStatus('Camera on. Loading pose tracker...');
             requestAnimationFrame(() => this.trackFrame());
         } catch (error) {
@@ -515,6 +596,7 @@ class SideTracker {
 
         this.elements.bodyFeedback.textContent = feedback.message;
         this.updateMetricDisplay(metrics, runType);
+        this.updateAngleWarning(metrics, runType);
 
         if (performance.now() - this.lastSaveMs > 1000) {
             this.lastSaveMs = performance.now();
@@ -725,6 +807,7 @@ class SideTracker {
 
     async saveTrackingSample(metrics, feedback, runType) {
         if (!this.sessionId || !this.activeRep?.repId) return;
+        if (metrics.poseScore < 0.45) return;
 
         const sample = {
             sessionId: this.sessionId,
@@ -738,32 +821,100 @@ class SideTracker {
             createdAt: serverTimestamp()
         };
 
+        this.activeRepSamples.push(sample);
+
         try {
             await addDoc(collection(this.db, 'sessions', this.sessionId, 'reps', this.activeRep.repId, 'trackingSamples'), sample);
-            await setDoc(doc(this.db, 'sessions', this.sessionId), {
-                latestTrackingFeedback: {
-                    repId: this.activeRep.repId,
-                    cue: this.activeRep.cue,
-                    runType,
-                    metrics,
-                    feedback,
-                    source: 'side-tracker',
-                    updatedAt: serverTimestamp()
-                }
-            }, { merge: true });
         } catch (error) {
             console.warn('Tracking sample save failed:', error);
             this.setStatus('Tracking locally, but Firestore save failed.');
         }
     }
 
+    async finalizeRepFeedback(rep) {
+        if (!this.sessionId || !rep?.repId || this.activeRepSamples.length === 0) return;
+
+        const summary = this.buildRepFeedbackSummary(rep, this.activeRepSamples);
+        this.activeRepSamples = [];
+
+        try {
+            await setDoc(doc(this.db, 'sessions', this.sessionId), {
+                latestTrackingFeedback: {
+                    repId: rep.repId,
+                    cue: rep.cue,
+                    runType: summary.runType,
+                    metrics: summary.metrics,
+                    feedback: summary.feedback,
+                    source: 'side-tracker',
+                    updatedAt: serverTimestamp()
+                }
+            }, { merge: true });
+        } catch (error) {
+            console.warn('Final feedback save failed:', error);
+            this.setStatus('Final coach feedback save failed.');
+        }
+    }
+
+    buildRepFeedbackSummary(rep, samples) {
+        const runType = samples[samples.length - 1]?.runType || rep.cue;
+        const issueCounts = new Map();
+        const goodCounts = new Map();
+
+        samples.forEach(sample => {
+            String(sample.feedback.fix || '')
+                .split(',')
+                .map(item => item.trim())
+                .filter(Boolean)
+                .forEach(item => issueCounts.set(item, (issueCounts.get(item) || 0) + 1));
+
+            String(sample.feedback.good || '')
+                .split(',')
+                .map(item => item.trim())
+                .filter(Boolean)
+                .forEach(item => goodCounts.set(item, (goodCounts.get(item) || 0) + 1));
+        });
+
+        const topIssue = this.topCount(issueCounts) || 'keep same shape';
+        const topGood = this.topCount(goodCounts) || 'camera view';
+        const metrics = samples[samples.length - 1].metrics;
+
+        return {
+            runType,
+            metrics,
+            feedback: {
+                message: topIssue === 'keep same shape' ? 'Good athletic position' : topIssue,
+                good: topGood,
+                fix: topIssue,
+                runType
+            }
+        };
+    }
+
+    topCount(counts) {
+        let best = null;
+        let bestCount = 0;
+        counts.forEach((count, label) => {
+            if (count > bestCount) {
+                best = label;
+                bestCount = count;
+            }
+        });
+        return best;
+    }
+
     stopTracking() {
+        if (this.activeRep) {
+            this.finalizeRepFeedback(this.activeRep);
+        }
+
         this.isTracking = false;
         this.isPoseReady = false;
         this.poseErrorShown = false;
         this.elements.stopTrackingBtn.disabled = true;
         this.elements.startTrackingBtn.disabled = !this.sessionId;
         this.elements.trackerPlaceholder.style.display = 'flex';
+        this.updateStepStatus({ cameraOn: false, cueActive: false });
+        this.setTrackerState('connected');
 
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());

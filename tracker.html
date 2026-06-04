@@ -25,6 +25,11 @@
                 <button id="connectSessionBtn" class="action-button">Connect</button>
             </div>
             <p id="trackerStatus" class="small-text">Waiting for session code.</p>
+            <div class="tracker-steps">
+                <span id="connectStep">1 Connect</span>
+                <span id="cameraStep">2 Camera</span>
+                <span id="cueStep">3 Cue</span>
+            </div>
         </section>
 
         <section class="tracker-panel">
@@ -43,6 +48,7 @@
             <div class="camera-guide">
                 <p id="cameraPlacement">Use Auto to follow the cue from the glasses.</p>
                 <p id="cameraReads">Records only between cue start and Reaction Finished.</p>
+                <p id="angleWarning" class="angle-warning">Angle check appears after camera starts.</p>
             </div>
         </section>
 
@@ -118,6 +124,6 @@
         </section>
     </main>
 
-    <script type="module" src="tracker.js?v=7"></script>
+    <script type="module" src="tracker.js?v=8"></script>
 </body>
 </html>

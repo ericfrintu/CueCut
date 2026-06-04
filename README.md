@@ -194,6 +194,8 @@ For front-camera LEFT/RIGHT cut views, the tracker estimates plant-knee stack, p
 
 The tracker keeps the setup simple by showing where to place the phone and what the camera is reading for the selected view. Coach feedback is kept short so visual and audio feedback can support the athlete without taking attention away from the drill.
 
+The tracker shows a simple Connect / Camera / Cue readiness strip. It records pose samples only during the active rep window, ignores low-confidence pose samples for saved coach feedback, and sends one summarized coach cue after the rep ends.
+
 The tracker uses browser camera access and MediaPipe Pose Landmarker, so it must run on HTTPS or localhost.
 
 ### Default Settings

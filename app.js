@@ -23,6 +23,9 @@ class RepData {
         this.totalMs = null;
         this.timingMode = 'manual';
         this.motionStartMs = null;
+        this.coachGood = '';
+        this.coachFix = '';
+        this.coachRunType = '';
         this.notes = '';
     }
 
@@ -51,12 +54,21 @@ class RepData {
             this.totalMs || '',
             this.timingMode,
             this.motionStartMs || '',
+            this.coachRunType || '',
+            this.coachGood || '',
+            this.coachFix || '',
             this.notes
-        ].join(',');
+        ].map(RepData.toCSVCell).join(',');
     }
 
     static toCSVHeader() {
-        return 'rep_id,timestamp,cue,cue_start_ms,first_movement_ms,finish_ms,reaction_ms,movement_ms,total_ms,timing_mode,motion_start_ms,notes';
+        return 'rep_id,timestamp,cue,cue_start_ms,first_movement_ms,finish_ms,reaction_ms,movement_ms,total_ms,timing_mode,motion_start_ms,coach_run_type,coach_good,coach_fix,notes';
+    }
+
+    static toCSVCell(value) {
+        const text = String(value ?? '');
+        if (!/[",\n]/.test(text)) return text;
+        return `"${text.replace(/"/g, '""')}"`;
     }
 }
 
@@ -545,6 +557,7 @@ class CueCutApp {
         this.currentFeedbackScoreNote = null;
         this.currentCoachFeedback = null;
         this.lastCoachFeedbackKey = null;
+        this.coachFeedbackFallbackTimer = null;
         this.sessionUnsubscribe = null;
         this.currentScreen = 'homeScreen';
         this.focusedButton = null;
@@ -826,8 +839,13 @@ class CueCutApp {
         const latestFeedback = sessionData.latestTrackingFeedback;
         if (latestFeedback?.repId && latestFeedback.repId === this.currentRepData?.id) {
             this.currentCoachFeedback = latestFeedback;
+            this.attachCoachFeedbackToCurrentRep(latestFeedback);
             this.updateCoachFeedbackDisplay();
             this.speakCoachFeedback(latestFeedback);
+        }
+
+        if (sessionData.latestTrackerState) {
+            this.updateTrackerSyncStatus(sessionData.latestTrackerState);
         }
     }
 
@@ -970,8 +988,47 @@ class CueCutApp {
         document.getElementById('feedbackReaction').textContent = rep.reactionMs !== null ? `${(rep.reactionMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('feedbackScoreNote').textContent = this.currentFeedbackScoreNote || '—';
         this.updateCoachFeedbackDisplay();
+        this.startCoachFeedbackFallback(rep.id);
 
         this.goToScreen('feedbackScreen');
+        if (this.currentCoachFeedback) {
+            this.speakCoachFeedback(this.currentCoachFeedback);
+        }
+    }
+
+    startCoachFeedbackFallback(repId) {
+        clearTimeout(this.coachFeedbackFallbackTimer);
+        this.coachFeedbackFallbackTimer = setTimeout(() => {
+            if (this.currentRepData?.id !== repId || this.currentCoachFeedback?.feedback) {
+                return;
+            }
+
+            const coachEl = document.getElementById('feedbackCoachNote');
+            if (coachEl) {
+                coachEl.textContent = 'No phone feedback captured';
+            }
+        }, 2000);
+    }
+
+    attachCoachFeedbackToCurrentRep(latestFeedback) {
+        if (!this.currentRepData || !latestFeedback?.feedback) return;
+
+        this.currentRepData.coachRunType = latestFeedback.runType || latestFeedback.cue || '';
+        this.currentRepData.coachGood = latestFeedback.feedback.good || '';
+        this.currentRepData.coachFix = latestFeedback.feedback.fix || latestFeedback.feedback.message || '';
+        this.storage.saveRep(this.currentRepData);
+    }
+
+    updateTrackerSyncStatus(trackerState) {
+        const statusEl = document.getElementById('trackerSyncStatus');
+        if (!statusEl) return;
+
+        const status = trackerState.status || 'not connected';
+        const label = status === 'recording'
+            ? `Tracker: recording ${trackerState.cue || ''}`.trim()
+            : `Tracker: ${status}`;
+
+        statusEl.textContent = label;
     }
 
     updateCoachFeedbackDisplay() {
@@ -1219,9 +1276,13 @@ class CueCutApp {
 
         html += '<div class="session-details">';
         sessionReps.forEach((rep, index) => {
+            const coachNote = rep.coachFix
+                ? `<div>Coach: ${rep.coachRunType ? rep.coachRunType + ' | ' : ''}${rep.coachFix}</div>`
+                : '';
             html += `<div class="data-item">
                 <div><strong>Rep ${index + 1}</strong> | ${rep.cue}</div>
                 <div>Reaction: ${rep.reactionMs ? (rep.reactionMs / 1000).toFixed(2) + 's' : '-'}</div>
+                ${coachNote}
             </div>`;
         });
         html += '</div>';
@@ -1290,7 +1351,7 @@ class CueCutApp {
                     <th>Drill</th>
                     <th>Best</th>
                     <th>Latest</th>
-                    <th>Date</th>
+                    <th>Change</th>
                 </tr>
             </thead>
             <tbody>`;
@@ -1300,7 +1361,7 @@ class CueCutApp {
                 <td>${group.cue}</td>
                 <td>${group.best ? this.formatSeconds(group.best.reactionMs) : '-'}</td>
                 <td>${group.latest ? this.formatSeconds(group.latest.reactionMs) : '-'}</td>
-                <td>${group.best ? this.formatRepDate(group.best.timestamp) : '-'}</td>
+                <td>${this.formatLatestChange(group.best, group.latest)}</td>
             </tr>`;
         });
 
@@ -1339,6 +1400,16 @@ class CueCutApp {
 
     formatSeconds(ms) {
         return `${(ms / 1000).toFixed(2)}s`;
+    }
+
+    formatLatestChange(best, latest) {
+        if (!best || !latest) return '-';
+
+        const deltaMs = latest.reactionMs - best.reactionMs;
+        if (Math.abs(deltaMs) < 10) return 'Best';
+
+        const sign = deltaMs > 0 ? '+' : '-';
+        return `${sign}${(Math.abs(deltaMs) / 1000).toFixed(2)}s`;
     }
 
     formatRepDate(timestamp) {
