@@ -270,6 +270,7 @@ class SideTracker {
 
         if (nextActiveRep && nextActiveRep.repId !== this.activeRep?.repId) {
             this.activeRepSamples = [];
+            this.lastSaveMs = 0;
             this.updateCaptureBadge(0);
         }
 
@@ -607,10 +608,7 @@ class SideTracker {
         this.updateMetricDisplay(metrics, runType);
         this.updateAngleWarning(metrics, runType);
 
-        if (performance.now() - this.lastSaveMs > 1000) {
-            this.lastSaveMs = performance.now();
-            this.saveTrackingSample(metrics, feedback, runType);
-        }
+        this.saveTrackingSample(metrics, feedback, runType);
     }
 
     drawPose(landmarks) {
@@ -818,6 +816,10 @@ class SideTracker {
         if (!this.sessionId || !this.activeRep?.repId) return;
         if (metrics.poseScore < 0.45) return;
 
+        const now = performance.now();
+        if (now - this.lastSaveMs < 250) return;
+        this.lastSaveMs = now;
+
         const sample = {
             sessionId: this.sessionId,
             sessionCode: this.sessionCode,
@@ -845,15 +847,19 @@ class SideTracker {
         if (!this.sessionId || !rep?.repId) return;
 
         if (this.activeRepSamples.length === 0) {
-            this.showFinalCoachFeedback({
+            const summary = {
                 runType: rep.cue,
+                metrics: null,
                 feedback: {
                     good: 'camera connected',
-                    fix: 'no clear pose samples captured',
-                    message: 'No clear pose samples captured'
+                    fix: 'move the runner fully into frame',
+                    message: 'No clear pose samples captured',
+                    runType: rep.cue
                 }
-            });
+            };
+            this.showFinalCoachFeedback(summary);
             this.updateCaptureBadge(0, 'No clean samples');
+            await this.publishFinalFeedback(rep, summary);
             return;
         }
 
@@ -862,7 +868,10 @@ class SideTracker {
         this.activeRepSamples = [];
         this.showFinalCoachFeedback(summary);
         this.updateCaptureBadge(capturedCount, `Saved ${capturedCount} samples`);
+        await this.publishFinalFeedback(rep, summary);
+    }
 
+    async publishFinalFeedback(rep, summary) {
         try {
             await setDoc(doc(this.db, 'sessions', this.sessionId), {
                 latestTrackingFeedback: {
@@ -875,6 +884,7 @@ class SideTracker {
                     updatedAt: serverTimestamp()
                 }
             }, { merge: true });
+            this.setStatus('Final coach feedback sent to glasses.');
         } catch (error) {
             console.warn('Final feedback save failed:', error);
             this.setStatus('Final coach feedback save failed.');
