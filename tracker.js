@@ -106,6 +106,10 @@ class SideTracker {
         this.poseErrorShown = false;
         this.lastVideoTime = -1;
         this.lastSaveMs = 0;
+        this.latestMetrics = null;
+        this.latestRunType = 'AUTO';
+        this.isCalibratingAngle = false;
+        this.angleCalibrationSamples = [];
 
         this.elements = {
             sessionCodeInput: document.getElementById('sessionCodeInput'),
@@ -128,6 +132,7 @@ class SideTracker {
             cameraPlacement: document.getElementById('cameraPlacement'),
             cameraReads: document.getElementById('cameraReads'),
             angleWarning: document.getElementById('angleWarning'),
+            calibrateAngleBtn: document.getElementById('calibrateAngleBtn'),
             activeRepStatus: document.getElementById('activeRepStatus'),
             connectStep: document.getElementById('connectStep'),
             cameraStep: document.getElementById('cameraStep'),
@@ -152,6 +157,7 @@ class SideTracker {
         this.elements.testSyncBtn.addEventListener('click', () => this.testSync());
         this.elements.startTrackingBtn.addEventListener('click', () => this.startTracking());
         this.elements.stopTrackingBtn.addEventListener('click', () => this.stopTracking());
+        this.elements.calibrateAngleBtn.addEventListener('click', () => this.startAngleCalibration());
         this.elements.sessionCodeInput.addEventListener('input', () => {
             this.elements.sessionCodeInput.value = this.elements.sessionCodeInput.value.replace(/\D/g, '').slice(0, 4);
         });
@@ -337,7 +343,11 @@ class SideTracker {
 
         this.elements.cameraPlacement.textContent = guidance.placement;
         this.elements.cameraReads.textContent = `${guidance.reads} ${recordingText}`;
-        this.updateAngleWarning(null, effectiveType);
+        if (!this.isCalibratingAngle) {
+            this.elements.angleWarning.textContent = effectiveType === 'LEFT' || effectiveType === 'RIGHT'
+                ? 'Press Test Angle after placing the camera. Front view works best for cuts.'
+                : 'Press Test Angle after placing the camera. Side or 45-degree view works best.';
+        }
     }
 
     updateStepStatus({ connected, cameraOn, cueActive } = {}) {
@@ -371,27 +381,59 @@ class SideTracker {
         });
     }
 
-    updateAngleWarning(metrics, runType = this.getEffectiveRunType()) {
-        if (!this.elements.angleWarning) return;
-
-        if (!metrics) {
-            this.elements.angleWarning.textContent = runType === 'LEFT' || runType === 'RIGHT'
-                ? 'Angle: use front view for cut form.'
-                : 'Angle: use side or 45-degree view for this run.';
+    startAngleCalibration() {
+        if (!this.isTracking || !this.isPoseReady) {
+            this.elements.angleWarning.textContent = 'Start camera first, then test the angle.';
             return;
         }
 
-        if ((runType === 'LEFT' || runType === 'RIGHT') && metrics.shoulderHipOffsetPct > 90) {
-            this.elements.angleWarning.textContent = 'Angle warning: athlete may be too side-on for front cut reading.';
+        this.isCalibratingAngle = true;
+        this.angleCalibrationSamples = [];
+        this.elements.calibrateAngleBtn.disabled = true;
+        this.elements.angleWarning.textContent = 'Testing angle... hold the athlete in frame.';
+
+        setTimeout(() => this.finishAngleCalibration(), 1800);
+    }
+
+    collectAngleCalibration(metrics) {
+        if (!this.isCalibratingAngle || !metrics) return;
+        this.angleCalibrationSamples.push({
+            shoulderHipOffsetPct: metrics.shoulderHipOffsetPct,
+            poseScore: metrics.poseScore
+        });
+    }
+
+    finishAngleCalibration() {
+        const runType = this.latestRunType || this.getEffectiveRunType();
+        const samples = this.angleCalibrationSamples
+            .filter(sample => Number.isFinite(sample.shoulderHipOffsetPct) && sample.poseScore >= MIN_TRACKING_POSE_SCORE);
+
+        this.isCalibratingAngle = false;
+        this.elements.calibrateAngleBtn.disabled = !this.isPoseReady;
+
+        if (samples.length < 4) {
+            this.elements.angleWarning.textContent = 'Angle test: low confidence. Move closer or improve lighting, then test again.';
             return;
         }
 
-        if ((runType === 'GO' || runType === 'DROP') && metrics.shoulderHipOffsetPct < 8) {
-            this.elements.angleWarning.textContent = 'Angle warning: side view works better for this run.';
-            return;
+        const avgOffset = this.average(samples.map(sample => sample.shoulderHipOffsetPct));
+        this.elements.angleWarning.textContent = this.getAngleCalibrationMessage(avgOffset, runType);
+    }
+
+    getAngleCalibrationMessage(shoulderHipOffsetPct, runType) {
+        if (runType === 'LEFT' || runType === 'RIGHT') {
+            return shoulderHipOffsetPct > 90
+                ? 'Angle test: not ideal. Move toward a front view for cut form.'
+                : 'Angle test: usable for cut form.';
         }
 
-        this.elements.angleWarning.textContent = 'Angle looks usable.';
+        if (runType === 'GO' || runType === 'DROP' || runType === 'TURN' || runType === 'AUTO') {
+            return shoulderHipOffsetPct < 8
+                ? 'Angle test: not ideal. Move more side-on or 45 degrees for this rep.'
+                : 'Angle test: usable for acceleration view.';
+        }
+
+        return 'Angle test: usable.';
     }
 
     loadSessionSettings(sessionSettings) {
@@ -451,6 +493,7 @@ class SideTracker {
             this.elements.trackerPlaceholder.style.display = 'none';
             this.isTracking = true;
             this.elements.stopTrackingBtn.disabled = false;
+            this.elements.calibrateAngleBtn.disabled = false;
             this.updateStepStatus({ cameraOn: true });
             this.setTrackerState('camera on');
             this.setStatus(this.sessionId ? 'Camera on. Loading pose tracker...' : 'Camera on. Connect session code to record reps.');
@@ -459,6 +502,7 @@ class SideTracker {
             console.error(error);
             this.setStatus(this.getCameraErrorMessage(error));
             this.elements.startTrackingBtn.disabled = false;
+            this.elements.calibrateAngleBtn.disabled = true;
             return;
         }
 
@@ -611,17 +655,26 @@ class SideTracker {
         this.drawPose(landmarks);
 
         if (!landmarks) {
-            this.elements.bodyFeedback.textContent = 'Step into the camera view.';
+            if (!this.activeRep) {
+                this.elements.bodyFeedback.textContent = 'Camera ready. Step into frame, then press Test Angle.';
+            }
             return;
         }
 
         const runType = this.getEffectiveRunType();
         const metrics = this.calculateMetrics(landmarks, runType);
         const feedback = this.buildFeedback(metrics, runType);
+        this.latestMetrics = metrics;
+        this.latestRunType = runType;
+        this.collectAngleCalibration(metrics);
 
-        this.elements.bodyFeedback.textContent = feedback.message;
+        if (this.activeRep) {
+            const sampleCount = this.getRepSamples(this.activeRep.repId).length;
+            this.elements.bodyFeedback.textContent = `Capturing ${this.activeRep.cue} rep... ${sampleCount} samples`;
+        } else if (!this.isCalibratingAngle) {
+            this.elements.bodyFeedback.textContent = 'Camera ready. Coach feedback appears after each rep.';
+        }
         this.updateMetricDisplay(metrics, runType);
-        this.updateAngleWarning(metrics, runType);
 
         this.saveTrackingSample(metrics, feedback, runType);
     }
@@ -1203,8 +1256,11 @@ class SideTracker {
         this.isTracking = false;
         this.isPoseReady = false;
         this.poseErrorShown = false;
+        this.isCalibratingAngle = false;
+        this.angleCalibrationSamples = [];
         this.elements.stopTrackingBtn.disabled = true;
         this.elements.startTrackingBtn.disabled = !this.sessionId;
+        this.elements.calibrateAngleBtn.disabled = true;
         this.elements.trackerPlaceholder.style.display = 'flex';
         this.updateStepStatus({ cameraOn: false, cueActive: false });
         this.setTrackerState('connected');
