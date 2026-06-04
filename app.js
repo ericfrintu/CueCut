@@ -943,10 +943,18 @@ class CueCutApp {
 
     goToMovementScreen() {
         document.getElementById('currentCueDisplay').innerHTML = `Cue: <strong>${this.currentRepData.cue}</strong>`;
+        const finishButton = document.getElementById('reactionFinishedBtn');
+        finishButton.disabled = false;
+        finishButton.textContent = 'Reaction Finished';
         this.goToScreen('movementScreen');
     }
 
     finishReaction() {
+        const finishButton = document.getElementById('reactionFinishedBtn');
+        if (finishButton.disabled) return;
+        finishButton.disabled = true;
+        finishButton.textContent = 'Saving...';
+
         // Record reaction time as now - when cue started
         this.currentRepData.firstMovementMs = performance.now();
         this.currentRepData.calculateTimings();
@@ -1042,9 +1050,7 @@ class CueCutApp {
 
         const feedback = this.currentCoachFeedback.feedback;
         const runType = this.currentCoachFeedback.runType || this.currentCoachFeedback.cue || 'run';
-        const message = feedback.good
-            ? `Good: ${feedback.good}. Fix: ${feedback.fix}.`
-            : feedback.message;
+        const message = feedback.fix || feedback.message;
 
         coachEl.textContent = `${runType}: ${message}`;
     }
@@ -1061,11 +1067,9 @@ class CueCutApp {
         }
 
         this.lastCoachFeedbackKey = key;
-        const spokenCue = feedback.fix && feedback.good
-            ? `Good ${feedback.good}. Fix ${feedback.fix}.`
-            : feedback.message;
+        const spokenCue = feedback.fix || feedback.message;
 
-        this.audio.playFeedback(`Coach. ${spokenCue}`);
+        this.audio.playFeedback(`Fix. ${spokenCue}`);
     }
 
     getScoreNoteForRep(rep) {
@@ -1125,12 +1129,14 @@ class CueCutApp {
         const movementTimes = reps.filter(r => r.movementMs !== null).map(r => r.movementMs);
         const avgMovementMs = movementTimes.length > 0 ? movementTimes.reduce((a, b) => a + b, 0) / movementTimes.length : 0;
         const fatigue = this.calculateFatigue(reps);
+        const trackedReps = reps.filter(rep => rep.coachFix).length;
 
-        return { totalReps, avgReactionMs, bestReactionMs, avgMovementMs, fatigue };
+        return { totalReps, trackedReps, avgReactionMs, bestReactionMs, avgMovementMs, fatigue };
     }
 
     showSummary(stats, sessionReps) {
         document.getElementById('summaryReps').textContent = stats.totalReps;
+        document.getElementById('summaryTracked').textContent = `${stats.trackedReps}/${stats.totalReps}`;
         document.getElementById('summaryAvgReaction').textContent = stats.avgReactionMs > 0 ? `${(stats.avgReactionMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('summaryBestReaction').textContent = stats.bestReactionMs > 0 ? `${(stats.bestReactionMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('summaryFatigue').textContent = stats.fatigue;
@@ -1270,19 +1276,17 @@ class CueCutApp {
             <button id="backToSessionsBtn" class="back-button focusable" tabindex="0">Back to Sessions</button>
             <div>
                 <strong>${this.formatSessionDate(sessionId, sessionReps)}</strong><br>
-                Reps: ${stats.totalReps} | Avg: ${stats.avgReactionMs > 0 ? (stats.avgReactionMs / 1000).toFixed(2) + 's' : '-'}
+                Reps: ${stats.totalReps} | Tracked: ${stats.trackedReps}/${stats.totalReps}<br>
+                    Fatigue: ${stats.fatigue}
             </div>
         </div>`;
 
         html += '<div class="session-details">';
         sessionReps.forEach((rep, index) => {
-            const coachNote = rep.coachFix
-                ? `<div>Coach: ${rep.coachRunType ? rep.coachRunType + ' | ' : ''}${rep.coachFix}</div>`
-                : '';
+            const reaction = rep.reactionMs ? (rep.reactionMs / 1000).toFixed(2) + 's' : '-';
+            const coachNote = rep.coachFix ? ` | Fix: ${rep.coachFix}` : ' | No coach data';
             html += `<div class="data-item">
-                <div><strong>Rep ${index + 1}</strong> | ${rep.cue}</div>
-                <div>Reaction: ${rep.reactionMs ? (rep.reactionMs / 1000).toFixed(2) + 's' : '-'}</div>
-                ${coachNote}
+                <div><strong>${index + 1}. ${rep.cue}</strong> | ${reaction}${coachNote}</div>
             </div>`;
         });
         html += '</div>';

@@ -13,7 +13,7 @@
         <section class="tracker-header">
             <div>
                 <h1 class="title">Side Tracker</h1>
-                <p class="subtitle">Enter the glasses session code.</p>
+                <p class="subtitle">Start camera, connect code, wait for cue.</p>
             </div>
             <a class="tracker-link" href="index.html">Glasses App</a>
         </section>
@@ -24,7 +24,8 @@
                 <input id="sessionCodeInput" class="tracker-input" inputmode="numeric" maxlength="4" placeholder="1234">
                 <button id="connectSessionBtn" class="action-button">Connect</button>
             </div>
-            <p id="trackerStatus" class="small-text">Waiting for session code.</p>
+            <button id="testSyncBtn" class="back-button tracker-test-button" disabled>Test Sync</button>
+            <p id="trackerStatus" class="small-text">Start camera or enter session code.</p>
             <div class="tracker-steps">
                 <span id="connectStep">1 Connect</span>
                 <span id="cameraStep">2 Camera</span>
@@ -99,12 +100,13 @@
         </section>
 
         <section class="tracker-actions">
-            <button id="startTrackingBtn" class="action-button" disabled>Start Camera</button>
+            <button id="startTrackingBtn" class="action-button">Start Camera</button>
             <button id="stopTrackingBtn" class="action-button danger" disabled>Stop</button>
         </section>
 
         <section class="tracker-feedback">
             <h2 id="bodyFeedback">No body data yet.</h2>
+            <p id="captureBadge" class="small-text">Captured: 0 samples</p>
             <table class="tracker-metrics">
                 <tbody>
                     <tr>
@@ -122,8 +124,9 @@
                 </tbody>
             </table>
         </section>
+        <p class="tracker-version">v10</p>
     </main>
 
-    <script type="module" src="tracker.js?v=9"></script>
+    <script type="module" src="tracker.js?v=10"></script>
 </body>
 </html>

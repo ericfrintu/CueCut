@@ -198,6 +198,8 @@ The tracker shows a simple Connect / Camera / Cue readiness strip. It records po
 
 The tracker uses browser camera access and MediaPipe Pose Landmarker, so it must run on HTTPS or localhost.
 
+Recommended Firestore access should be limited to the app data paths used here: `sessions/{sessionId}`, `sessionCodes/{code}`, `sessions/{sessionId}/reps/{repId}`, and `sessions/{sessionId}/reps/{repId}/trackingSamples/{sampleId}`.
+
 ### Default Settings
 
 ```javascript

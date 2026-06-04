@@ -821,6 +821,13 @@ body {
     max-width: none;
 }
 
+.tracker-test-button {
+    margin: 10px 0 0;
+    max-width: none;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+}
+
 .tracker-actions button:disabled,
 .tracker-connect-row button:disabled {
     opacity: 0.45;
@@ -832,6 +839,12 @@ body {
     color: #00ff00;
     font-size: 1.4rem;
     text-align: left;
+}
+
+.tracker-version {
+    color: #555;
+    font: 700 0.75rem 'Courier New', monospace;
+    text-align: right;
 }
 
 .tracker-metrics {

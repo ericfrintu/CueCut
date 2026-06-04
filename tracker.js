@@ -105,6 +105,7 @@ class SideTracker {
         this.elements = {
             sessionCodeInput: document.getElementById('sessionCodeInput'),
             connectSessionBtn: document.getElementById('connectSessionBtn'),
+            testSyncBtn: document.getElementById('testSyncBtn'),
             trackerStatus: document.getElementById('trackerStatus'),
             trackerVideo: document.getElementById('trackerVideo'),
             trackerCanvas: document.getElementById('trackerCanvas'),
@@ -112,6 +113,7 @@ class SideTracker {
             startTrackingBtn: document.getElementById('startTrackingBtn'),
             stopTrackingBtn: document.getElementById('stopTrackingBtn'),
             bodyFeedback: document.getElementById('bodyFeedback'),
+            captureBadge: document.getElementById('captureBadge'),
             leanMetric: document.getElementById('leanMetric'),
             kneeMetric: document.getElementById('kneeMetric'),
             baseMetric: document.getElementById('baseMetric'),
@@ -137,11 +139,12 @@ class SideTracker {
         this.canvasContext = this.elements.trackerCanvas.getContext('2d');
         this.bindEvents();
         this.updateCameraGuide();
-        this.setStatus('Enter the 4-digit code from the glasses.');
+        this.setStatus('Start camera or enter the 4-digit code from the glasses.');
     }
 
     bindEvents() {
         this.elements.connectSessionBtn.addEventListener('click', () => this.connectSession());
+        this.elements.testSyncBtn.addEventListener('click', () => this.testSync());
         this.elements.startTrackingBtn.addEventListener('click', () => this.startTracking());
         this.elements.stopTrackingBtn.addEventListener('click', () => this.stopTracking());
         this.elements.sessionCodeInput.addEventListener('input', () => {
@@ -188,11 +191,11 @@ class SideTracker {
 
             this.sessionId = sessionId;
             this.sessionCode = code;
-            this.elements.startTrackingBtn.disabled = false;
+            this.elements.testSyncBtn.disabled = false;
             this.subscribeToSession();
             this.updateStepStatus({ connected: true });
-            this.setTrackerState('connected');
-            this.setStatus(`Connected to session ${code}. Place this device on the athlete's side.`);
+            this.setTrackerState(this.isTracking ? 'camera on' : 'connected');
+            this.setStatus(`Connected to session ${code}. ${this.isTracking ? 'Camera is ready.' : 'Start camera when ready.'}`);
         } catch (error) {
             console.error(error);
             this.setStatus(`Connect failed: ${error.code || error.message || 'check Firebase rules'}.`);
@@ -233,6 +236,16 @@ class SideTracker {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    testSync() {
+        if (!this.sessionId) {
+            this.setStatus('Connect to a session before testing sync.');
+            return;
+        }
+
+        this.setTrackerState('test received', { testAt: Date.now() });
+        this.setStatus('Test sent. Check glasses for tracker status.');
+    }
+
     subscribeToSession() {
         if (this.sessionUnsubscribe) {
             this.sessionUnsubscribe();
@@ -257,6 +270,7 @@ class SideTracker {
 
         if (nextActiveRep && nextActiveRep.repId !== this.activeRep?.repId) {
             this.activeRepSamples = [];
+            this.updateCaptureBadge(0);
         }
 
         this.activeRep = nextActiveRep;
@@ -324,7 +338,7 @@ class SideTracker {
 
     setTrackerState(status, extra = {}) {
         if (!this.sessionId) return;
-        const stateKey = `${status}_${extra.repId || ''}_${extra.cue || ''}`;
+        const stateKey = `${status}_${extra.repId || ''}_${extra.cue || ''}_${extra.testAt || ''}`;
         if (stateKey === this.lastTrackerStateKey) return;
 
         this.lastTrackerStateKey = stateKey;
@@ -413,11 +427,6 @@ class SideTracker {
     }
 
     async startTracking() {
-        if (!this.sessionId) {
-            this.setStatus('Connect to a session first.');
-            return;
-        }
-
         this.elements.startTrackingBtn.disabled = true;
         this.setStatus('Opening camera...');
 
@@ -428,7 +437,7 @@ class SideTracker {
             this.elements.stopTrackingBtn.disabled = false;
             this.updateStepStatus({ cameraOn: true });
             this.setTrackerState('camera on');
-            this.setStatus('Camera on. Loading pose tracker...');
+            this.setStatus(this.sessionId ? 'Camera on. Loading pose tracker...' : 'Camera on. Connect session code to record reps.');
             requestAnimationFrame(() => this.trackFrame());
         } catch (error) {
             console.error(error);
@@ -822,6 +831,7 @@ class SideTracker {
         };
 
         this.activeRepSamples.push(sample);
+        this.updateCaptureBadge(this.activeRepSamples.length);
 
         try {
             await addDoc(collection(this.db, 'sessions', this.sessionId, 'reps', this.activeRep.repId, 'trackingSamples'), sample);
@@ -843,12 +853,15 @@ class SideTracker {
                     message: 'No clear pose samples captured'
                 }
             });
+            this.updateCaptureBadge(0, 'No clean samples');
             return;
         }
 
         const summary = this.buildRepFeedbackSummary(rep, this.activeRepSamples);
+        const capturedCount = this.activeRepSamples.length;
         this.activeRepSamples = [];
         this.showFinalCoachFeedback(summary);
+        this.updateCaptureBadge(capturedCount, `Saved ${capturedCount} samples`);
 
         try {
             await setDoc(doc(this.db, 'sessions', this.sessionId), {
@@ -873,6 +886,11 @@ class SideTracker {
         const good = feedback.good || 'effort';
         const fix = feedback.fix || feedback.message || 'keep same shape';
         this.elements.bodyFeedback.textContent = `Final ${summary.runType}: Good ${good}. Fix ${fix}.`;
+    }
+
+    updateCaptureBadge(count, label = null) {
+        if (!this.elements.captureBadge) return;
+        this.elements.captureBadge.textContent = label || `Captured: ${count} samples`;
     }
 
     buildRepFeedbackSummary(rep, samples) {
