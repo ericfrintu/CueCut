@@ -832,10 +832,23 @@ class SideTracker {
     }
 
     async finalizeRepFeedback(rep) {
-        if (!this.sessionId || !rep?.repId || this.activeRepSamples.length === 0) return;
+        if (!this.sessionId || !rep?.repId) return;
+
+        if (this.activeRepSamples.length === 0) {
+            this.showFinalCoachFeedback({
+                runType: rep.cue,
+                feedback: {
+                    good: 'camera connected',
+                    fix: 'no clear pose samples captured',
+                    message: 'No clear pose samples captured'
+                }
+            });
+            return;
+        }
 
         const summary = this.buildRepFeedbackSummary(rep, this.activeRepSamples);
         this.activeRepSamples = [];
+        this.showFinalCoachFeedback(summary);
 
         try {
             await setDoc(doc(this.db, 'sessions', this.sessionId), {
@@ -853,6 +866,13 @@ class SideTracker {
             console.warn('Final feedback save failed:', error);
             this.setStatus('Final coach feedback save failed.');
         }
+    }
+
+    showFinalCoachFeedback(summary) {
+        const feedback = summary.feedback;
+        const good = feedback.good || 'effort';
+        const fix = feedback.fix || feedback.message || 'keep same shape';
+        this.elements.bodyFeedback.textContent = `Final ${summary.runType}: Good ${good}. Fix ${fix}.`;
     }
 
     buildRepFeedbackSummary(rep, samples) {
