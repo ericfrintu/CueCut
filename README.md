@@ -190,6 +190,8 @@ Open `/tracker.html` on a phone or laptop placed to the athlete's side. Enter th
 
 Session settings are adjusted from the tracker page and apply to that connected session only.
 
+For front-camera LEFT/RIGHT cut views, the tracker estimates plant-knee stack, plant-leg bend, stance width, and chest-over-hips alignment. A single front angle cannot fully measure depth or hip rotation, so those cues are treated as coaching estimates rather than exact biomechanics.
+
 The tracker uses browser camera access and MediaPipe Pose Landmarker, so it must run on HTTPS or localhost.
 
 ### Default Settings

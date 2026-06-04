@@ -468,9 +468,7 @@ class SideTracker {
         const feedback = this.buildFeedback(metrics, runType);
 
         this.elements.bodyFeedback.textContent = feedback.message;
-        this.elements.leanMetric.textContent = `${metrics.trunkLeanDeg.toFixed(1)} deg`;
-        this.elements.kneeMetric.textContent = `${metrics.kneeAngleDeg.toFixed(0)} deg`;
-        this.elements.baseMetric.textContent = `${metrics.stanceWidthPct.toFixed(1)}%`;
+        this.updateMetricDisplay(metrics, runType);
 
         if (performance.now() - this.lastSaveMs > 1000) {
             this.lastSaveMs = performance.now();
@@ -519,14 +517,48 @@ class SideTracker {
             : 0;
         const stanceWidthPct = Math.abs(landmarks[27].x - landmarks[28].x) * 100;
         const trunkLeanDeg = Math.abs(Math.atan2(shoulder.x - hip.x, hip.y - shoulder.y) * 180 / Math.PI);
+        const hipWidth = Math.max(Math.abs(landmarks[23].x - landmarks[24].x), 0.01);
+        const leftKneeStackPct = Math.abs(landmarks[25].x - landmarks[27].x) / hipWidth * 100;
+        const rightKneeStackPct = Math.abs(landmarks[26].x - landmarks[28].x) / hipWidth * 100;
+        const leftKneeInsidePct = Math.max(0, landmarks[25].x - landmarks[27].x) / hipWidth * 100;
+        const rightKneeInsidePct = Math.max(0, landmarks[28].x - landmarks[26].x) / hipWidth * 100;
+        const shoulderTiltDeg = this.segmentTiltDeg(landmarks[11], landmarks[12]);
+        const hipTiltDeg = this.segmentTiltDeg(landmarks[23], landmarks[24]);
+        const shoulderHipOffsetPct = Math.abs(shoulder.x - hip.x) / hipWidth * 100;
 
         return {
             trunkLeanDeg,
             kneeAngleDeg,
+            leftKneeAngleDeg: leftKneeAngle,
+            rightKneeAngleDeg: rightKneeAngle,
             stanceWidthPct,
+            leftKneeStackPct,
+            rightKneeStackPct,
+            leftKneeInsidePct,
+            rightKneeInsidePct,
+            shoulderTiltDeg,
+            hipTiltDeg,
+            shoulderHipOffsetPct,
             hipHeightPct: hip.y * 100,
             poseScore: this.getPoseScore(landmarks)
         };
+    }
+
+    updateMetricDisplay(metrics, runType) {
+        if (runType === 'LEFT' || runType === 'RIGHT') {
+            const plantSide = runType === 'LEFT' ? 'right' : 'left';
+            const plantKneeStackPct = plantSide === 'right' ? metrics.rightKneeStackPct : metrics.leftKneeStackPct;
+            const plantKneeAngle = plantSide === 'right' ? metrics.rightKneeAngleDeg : metrics.leftKneeAngleDeg;
+
+            this.elements.leanMetric.textContent = `chest ${metrics.shoulderHipOffsetPct.toFixed(0)}%`;
+            this.elements.kneeMetric.textContent = `${plantSide} ${plantKneeAngle.toFixed(0)}deg / ${plantKneeStackPct.toFixed(0)}%`;
+            this.elements.baseMetric.textContent = `${metrics.stanceWidthPct.toFixed(1)}%`;
+            return;
+        }
+
+        this.elements.leanMetric.textContent = `${metrics.trunkLeanDeg.toFixed(1)} deg`;
+        this.elements.kneeMetric.textContent = `${metrics.kneeAngleDeg.toFixed(0)} deg`;
+        this.elements.baseMetric.textContent = `${metrics.stanceWidthPct.toFixed(1)}%`;
     }
 
     buildFeedback(metrics, runType = 'AUTO') {
@@ -586,6 +618,10 @@ class SideTracker {
             notes.push('Push from wider base');
         }
 
+        if (runType === 'LEFT' || runType === 'RIGHT') {
+            this.addCuttingFeedback(notes, good, metrics, runType);
+        }
+
         return {
             message: notes.length ? notes.join(' + ') : 'Good athletic position',
             good: good.length ? good.join(', ') : 'effort and camera view',
@@ -595,6 +631,44 @@ class SideTracker {
             baseLabel,
             runType
         };
+    }
+
+    addCuttingFeedback(notes, good, metrics, runType) {
+        const plantSide = runType === 'LEFT' ? 'right' : 'left';
+        const plantKneeStackPct = plantSide === 'right' ? metrics.rightKneeStackPct : metrics.leftKneeStackPct;
+        const plantKneeInsidePct = plantSide === 'right' ? metrics.rightKneeInsidePct : metrics.leftKneeInsidePct;
+        const plantKneeAngle = plantSide === 'right' ? metrics.rightKneeAngleDeg : metrics.leftKneeAngleDeg;
+        const tiltMismatch = Math.abs(metrics.shoulderTiltDeg - metrics.hipTiltDeg);
+
+        if (plantKneeInsidePct > 35) {
+            notes.push(`${plantSide} knee collapsing in`);
+        } else if (plantKneeStackPct > 55) {
+            notes.push(`Stack ${plantSide} knee over foot`);
+        } else {
+            good.push(`${plantSide} knee stack`);
+        }
+
+        if (plantKneeAngle > 160) {
+            notes.push(`Load ${plantSide} knee more`);
+        } else if (plantKneeAngle < 120) {
+            notes.push(`Do not sink so deep on ${plantSide}`);
+        } else {
+            good.push(`${plantSide} plant bend`);
+        }
+
+        if (metrics.shoulderHipOffsetPct > 65) {
+            notes.push('Keep chest over hips');
+        } else {
+            good.push('chest over hips');
+        }
+
+        if (tiltMismatch > 12) {
+            notes.push('Keep shoulders and hips connected');
+        }
+
+        if (metrics.stanceWidthPct < 10) {
+            notes.push(`Widen plant for ${runType.toLowerCase()} cut`);
+        }
     }
 
     async saveTrackingSample(metrics, feedback, runType) {
@@ -666,6 +740,10 @@ class SideTracker {
         const cosine = dot / (abMag * cbMag);
 
         return Math.acos(Math.min(1, Math.max(-1, cosine))) * 180 / Math.PI;
+    }
+
+    segmentTiltDeg(a, b) {
+        return Math.abs(Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI);
     }
 
     getPoseScore(landmarks) {
