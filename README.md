@@ -192,6 +192,8 @@ Session settings are adjusted from the tracker page and apply to that connected 
 
 For front-camera LEFT/RIGHT cut views, the tracker estimates plant-knee stack, plant-leg bend, stance width, and chest-over-hips alignment. A single front angle cannot fully measure depth or hip rotation, so those cues are treated as coaching estimates rather than exact biomechanics.
 
+The tracker keeps the setup simple by showing where to place the phone and what the camera is reading for the selected view. Coach feedback is kept short so visual and audio feedback can support the athlete without taking attention away from the drill.
+
 The tracker uses browser camera access and MediaPipe Pose Landmarker, so it must run on HTTPS or localhost.
 
 ### Default Settings

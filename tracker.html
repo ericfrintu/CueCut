@@ -29,7 +29,7 @@
 
         <section class="tracker-panel">
             <div class="tracker-panel-header">
-                <h2>Run View</h2>
+                <h2>Camera View</h2>
                 <span id="activeRepStatus">No active rep</span>
             </div>
             <div class="run-tabs" id="runTypeTabs">
@@ -39,6 +39,10 @@
                 <button class="run-tab" data-run-type="DROP">Drop</button>
                 <button class="run-tab" data-run-type="TURN">Turn</button>
                 <button class="run-tab" data-run-type="GO">Go</button>
+            </div>
+            <div class="camera-guide">
+                <p id="cameraPlacement">Use Auto to follow the cue from the glasses.</p>
+                <p id="cameraReads">Records only between cue start and Reaction Finished.</p>
             </div>
         </section>
 
@@ -98,15 +102,15 @@
             <table class="tracker-metrics">
                 <tbody>
                     <tr>
-                        <th>Lean</th>
+                        <th id="leanMetricLabel">Lean</th>
                         <td id="leanMetric">-</td>
                     </tr>
                     <tr>
-                        <th>Knee</th>
+                        <th id="kneeMetricLabel">Knee</th>
                         <td id="kneeMetric">-</td>
                     </tr>
                     <tr>
-                        <th>Base</th>
+                        <th id="baseMetricLabel">Base</th>
                         <td id="baseMetric">-</td>
                     </tr>
                 </tbody>
@@ -114,6 +118,6 @@
         </section>
     </main>
 
-    <script type="module" src="tracker.js?v=6"></script>
+    <script type="module" src="tracker.js?v=7"></script>
 </body>
 </html>

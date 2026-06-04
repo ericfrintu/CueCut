@@ -544,6 +544,7 @@ class CueCutApp {
         this.currentDataSessionId = null;
         this.currentFeedbackScoreNote = null;
         this.currentCoachFeedback = null;
+        this.lastCoachFeedbackKey = null;
         this.sessionUnsubscribe = null;
         this.currentScreen = 'homeScreen';
         this.focusedButton = null;
@@ -769,6 +770,7 @@ class CueCutApp {
         this.currentSessionCode = this.generateSessionCode();
         this.currentSummarySessionId = this.currentSessionId;
         this.currentCoachFeedback = null;
+        this.lastCoachFeedbackKey = null;
         this.cloud.saveSession({
             sessionId: this.currentSessionId,
             sessionCode: this.currentSessionCode,
@@ -825,6 +827,7 @@ class CueCutApp {
         if (latestFeedback?.repId && latestFeedback.repId === this.currentRepData?.id) {
             this.currentCoachFeedback = latestFeedback;
             this.updateCoachFeedbackDisplay();
+            this.speakCoachFeedback(latestFeedback);
         }
     }
 
@@ -885,6 +888,7 @@ class CueCutApp {
     showCue() {
         this.currentRepData.cueStartMs = performance.now();
         this.currentCoachFeedback = null;
+        this.lastCoachFeedbackKey = null;
         this.cloud.updateActiveRep(this.currentSessionId, {
             repId: this.currentRepData.id,
             cue: this.currentRepData.cue,
@@ -986,6 +990,25 @@ class CueCutApp {
             : feedback.message;
 
         coachEl.textContent = `${runType}: ${message}`;
+    }
+
+    speakCoachFeedback(latestFeedback) {
+        if (this.currentScreen !== 'feedbackScreen' || !latestFeedback?.feedback) {
+            return;
+        }
+
+        const feedback = latestFeedback.feedback;
+        const key = `${latestFeedback.repId}_${feedback.fix || feedback.message}`;
+        if (key === this.lastCoachFeedbackKey) {
+            return;
+        }
+
+        this.lastCoachFeedbackKey = key;
+        const spokenCue = feedback.fix && feedback.good
+            ? `Good ${feedback.good}. Fix ${feedback.fix}.`
+            : feedback.message;
+
+        this.audio.playFeedback(`Coach. ${spokenCue}`);
     }
 
     getScoreNoteForRep(rep) {

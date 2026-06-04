@@ -56,6 +56,33 @@ const POSE_LOADER_OPTIONS = [
     }
 ];
 
+const RUN_GUIDANCE = {
+    AUTO: {
+        placement: 'Auto follows the active glasses cue.',
+        reads: 'Pick a manual view only when you move the phone to that angle.'
+    },
+    LEFT: {
+        placement: 'Front view: face the athlete as they cut left.',
+        reads: 'Reads right plant knee stack, plant bend, base width, and chest-over-hips.'
+    },
+    RIGHT: {
+        placement: 'Front view: face the athlete as they cut right.',
+        reads: 'Reads left plant knee stack, plant bend, base width, and chest-over-hips.'
+    },
+    DROP: {
+        placement: 'Side view: place phone beside the athlete.',
+        reads: 'Reads hip drop, knee bend, and trunk lean.'
+    },
+    TURN: {
+        placement: 'Side or 45-degree view: capture the turn setup.',
+        reads: 'Reads turn load, trunk angle, knee bend, and base.'
+    },
+    GO: {
+        placement: 'Side view: place phone beside the acceleration lane.',
+        reads: 'Reads launch lean, knee bend, and base width.'
+    }
+};
+
 class SideTracker {
     constructor() {
         this.db = getFirestore(initializeApp(firebaseConfig));
@@ -86,6 +113,11 @@ class SideTracker {
             leanMetric: document.getElementById('leanMetric'),
             kneeMetric: document.getElementById('kneeMetric'),
             baseMetric: document.getElementById('baseMetric'),
+            leanMetricLabel: document.getElementById('leanMetricLabel'),
+            kneeMetricLabel: document.getElementById('kneeMetricLabel'),
+            baseMetricLabel: document.getElementById('baseMetricLabel'),
+            cameraPlacement: document.getElementById('cameraPlacement'),
+            cameraReads: document.getElementById('cameraReads'),
             activeRepStatus: document.getElementById('activeRepStatus'),
             settingsSaveStatus: document.getElementById('settingsSaveStatus'),
             trackerGoalSelect: document.getElementById('trackerGoalSelect'),
@@ -98,6 +130,7 @@ class SideTracker {
 
         this.canvasContext = this.elements.trackerCanvas.getContext('2d');
         this.bindEvents();
+        this.updateCameraGuide();
         this.setStatus('Enter the 4-digit code from the glasses.');
     }
 
@@ -210,6 +243,7 @@ class SideTracker {
     handleSessionUpdate(sessionData) {
         this.activeRep = sessionData.activeRep?.status === 'active' ? sessionData.activeRep : null;
         this.updateActiveRepStatus();
+        this.updateCameraGuide();
 
         if (sessionData.sessionSettings) {
             this.loadSessionSettings(sessionData.sessionSettings);
@@ -218,11 +252,11 @@ class SideTracker {
 
     updateActiveRepStatus() {
         if (!this.activeRep) {
-            this.elements.activeRepStatus.textContent = 'Waiting for active rep';
+            this.elements.activeRepStatus.textContent = 'Armed, not recording';
             return;
         }
 
-        this.elements.activeRepStatus.textContent = `Recording ${this.activeRep.cue}`;
+        this.elements.activeRepStatus.textContent = `Recording ${this.activeRep.cue} rep`;
     }
 
     selectRunType(runType) {
@@ -230,6 +264,7 @@ class SideTracker {
         this.elements.runTabs.forEach(button => {
             button.classList.toggle('active', button.dataset.runType === runType);
         });
+        this.updateCameraGuide();
     }
 
     getEffectiveRunType() {
@@ -237,6 +272,17 @@ class SideTracker {
             return this.activeRep?.cue || 'AUTO';
         }
         return this.selectedRunType;
+    }
+
+    updateCameraGuide() {
+        const effectiveType = this.getEffectiveRunType();
+        const guidance = RUN_GUIDANCE[effectiveType] || RUN_GUIDANCE.AUTO;
+        const recordingText = this.activeRep
+            ? `Recording only this ${this.activeRep.cue} rep window.`
+            : 'Armed only. Recording starts when the glasses cue appears.';
+
+        this.elements.cameraPlacement.textContent = guidance.placement;
+        this.elements.cameraReads.textContent = `${guidance.reads} ${recordingText}`;
     }
 
     loadSessionSettings(sessionSettings) {
@@ -550,12 +596,18 @@ class SideTracker {
             const plantKneeStackPct = plantSide === 'right' ? metrics.rightKneeStackPct : metrics.leftKneeStackPct;
             const plantKneeAngle = plantSide === 'right' ? metrics.rightKneeAngleDeg : metrics.leftKneeAngleDeg;
 
+            this.elements.leanMetricLabel.textContent = 'Chest';
+            this.elements.kneeMetricLabel.textContent = 'Plant Knee';
+            this.elements.baseMetricLabel.textContent = 'Base';
             this.elements.leanMetric.textContent = `chest ${metrics.shoulderHipOffsetPct.toFixed(0)}%`;
             this.elements.kneeMetric.textContent = `${plantSide} ${plantKneeAngle.toFixed(0)}deg / ${plantKneeStackPct.toFixed(0)}%`;
             this.elements.baseMetric.textContent = `${metrics.stanceWidthPct.toFixed(1)}%`;
             return;
         }
 
+        this.elements.leanMetricLabel.textContent = 'Lean';
+        this.elements.kneeMetricLabel.textContent = 'Knee';
+        this.elements.baseMetricLabel.textContent = 'Base';
         this.elements.leanMetric.textContent = `${metrics.trunkLeanDeg.toFixed(1)} deg`;
         this.elements.kneeMetric.textContent = `${metrics.kneeAngleDeg.toFixed(0)} deg`;
         this.elements.baseMetric.textContent = `${metrics.stanceWidthPct.toFixed(1)}%`;
