@@ -57,16 +57,20 @@ const POSE_LOADER_OPTIONS = [
 ];
 
 const RUN_GUIDANCE = {
-    AUTO: {
-        placement: 'Auto follows the active glasses cue.',
-        reads: '4 Direction Drill: cones are 15m front, back, left, and right from center.'
+    FORWARD_BACKWARD: {
+        placement: 'Forward/backward camera view: place the camera beside the sprint lane.',
+        reads: 'Use this for forward acceleration and backward runs. It reads posture, shin angle, first steps, and stride reach.'
+    },
+    LEFT_RIGHT: {
+        placement: 'Left/right camera view: face the athlete from the front for lateral movement.',
+        reads: 'Use this for left and right runs. It reads lateral push-off, plant-knee stack, plant bend, and chest-over-hips.'
     },
     FRONT: {
-        placement: 'Side camera mode: place camera beside the front/back lane.',
+        placement: 'Forward camera mode: place camera beside the forward/backward lane.',
         reads: 'Reads acceleration posture, shin angle, first-step projection, and stride reach.'
     },
     BACK: {
-        placement: 'Side camera mode: place camera beside the front/back lane.',
+        placement: 'Backward camera mode: place camera beside the forward/backward lane.',
         reads: 'Reads backpedal posture, braking shape, trunk angle, and knee bend.'
     },
     LEFT: {
@@ -84,6 +88,15 @@ const LANDMARK_VISIBLE_THRESHOLD = 0.2;
 const TRACKER_CUE_BANK = ['FRONT', 'BACK', 'LEFT', 'RIGHT'];
 const DEFAULT_FIELD_RADIUS_METERS = 15;
 
+function getCueDisplayName(cue) {
+    return {
+        FRONT: 'FORWARD',
+        BACK: 'BACKWARD',
+        LEFT: 'LEFT',
+        RIGHT: 'RIGHT'
+    }[cue] || cue;
+}
+
 class SideTracker {
     constructor() {
         this.db = getFirestore(initializeApp(firebaseConfig));
@@ -98,7 +111,7 @@ class SideTracker {
         this.samplesByRepId = new Map();
         this.lastSaveMsByRepId = new Map();
         this.lastTrackerStateKey = null;
-        this.selectedRunType = 'AUTO';
+        this.selectedRunType = 'FORWARD_BACKWARD';
         this.isTracking = false;
         this.isPoseReady = false;
         this.poseErrorShown = false;
@@ -141,6 +154,7 @@ class SideTracker {
             trackerDelayMax: document.getElementById('trackerDelayMax'),
             trackerAudioSelect: document.getElementById('trackerAudioSelect'),
             trackerAudioMode: document.getElementById('trackerAudioMode'),
+            trackerAudioModeInfo: document.getElementById('trackerAudioModeInfo'),
             trackerFieldRadius: document.getElementById('trackerFieldRadius'),
             trackerCameraDistance: document.getElementById('trackerCameraDistance'),
             trackerCameraMode: document.getElementById('trackerCameraMode'),
@@ -150,6 +164,7 @@ class SideTracker {
 
         this.canvasContext = this.elements.trackerCanvas.getContext('2d');
         this.bindEvents();
+        this.updateAudioModeInfo(this.elements.trackerAudioMode.value);
         this.updateCameraGuide();
         this.setStatus('Start camera or enter the 4-digit code from the glasses.');
     }
@@ -168,6 +183,9 @@ class SideTracker {
         });
         this.elements.runTabs.forEach(button => {
             button.addEventListener('click', () => this.selectRunType(button.dataset.runType));
+        });
+        this.elements.trackerAudioMode.addEventListener('change', () => {
+            this.updateAudioModeInfo(this.elements.trackerAudioMode.value);
         });
         [
             this.elements.trackerGoalSelect,
@@ -318,10 +336,10 @@ class SideTracker {
         }
 
         if (this.isTracking) {
-            this.elements.activeRepStatus.textContent = `Recording ${this.activeRep.cue} rep`;
+            this.elements.activeRepStatus.textContent = `Recording ${getCueDisplayName(this.activeRep.cue)} rep`;
             this.setTrackerState('recording', { cue: this.activeRep.cue, repId: this.activeRep.repId });
         } else {
-            this.elements.activeRepStatus.textContent = `${this.activeRep.cue} cue active`;
+            this.elements.activeRepStatus.textContent = `${getCueDisplayName(this.activeRep.cue)} cue active`;
         }
     }
 
@@ -334,9 +352,11 @@ class SideTracker {
     }
 
     getEffectiveRunType() {
-        if (this.selectedRunType === 'AUTO') {
+        if (this.activeRep?.cue) {
             return this.activeRep?.cue || 'AUTO';
         }
+        if (this.selectedRunType === 'LEFT_RIGHT') return 'LEFT';
+        if (this.selectedRunType === 'FORWARD_BACKWARD') return 'FRONT';
         return this.selectedRunType;
     }
 
@@ -348,9 +368,10 @@ class SideTracker {
 
     updateCameraGuide() {
         const effectiveType = this.getEffectiveRunType();
-        const guidance = RUN_GUIDANCE[effectiveType] || RUN_GUIDANCE.AUTO;
+        const guidanceKey = this.activeRep?.cue || this.selectedRunType;
+        const guidance = RUN_GUIDANCE[guidanceKey] || RUN_GUIDANCE.FORWARD_BACKWARD;
         const recordingText = this.activeRep
-            ? `Recording only this ${this.activeRep.cue} rep window.`
+            ? `Recording only this ${getCueDisplayName(this.activeRep.cue)} rep window.`
             : 'Armed only. Recording starts when the glasses cue appears.';
 
         this.elements.cameraPlacement.textContent = guidance.placement;
@@ -358,8 +379,22 @@ class SideTracker {
         if (!this.isCalibratingAngle) {
             this.elements.angleWarning.textContent = effectiveType === 'LEFT' || effectiveType === 'RIGHT'
                 ? 'Press Test Angle after placing the camera. Front view works best for cuts.'
-                : 'Press Test Angle after placing the camera. Side or 45-degree view works best.';
+                : 'Press Test Angle after placing the camera. Side or 45-degree view works best for forward/backward.';
         }
+    }
+
+    updateAudioModeInfo(mode) {
+        if (!this.elements.trackerAudioModeInfo) return;
+        const descriptions = {
+            off: 'Off: no sounds.',
+            cue_only: 'Cue Only: direction sounds only, best for normal reaction testing.',
+            live_sonification: 'Live Sonification: pose tracking shapes the sound while the athlete moves.',
+            coach_review: 'Coach Review: keeps live sound quiet and saves sound prints for after reps.',
+            reference: 'Reference: replay a good rep sound before the next try.',
+            compare: 'Compare: listen for timing differences between reps.',
+            minimal: 'Minimal: short quiet sounds with fewer distractions.'
+        };
+        this.elements.trackerAudioModeInfo.textContent = descriptions[mode] || descriptions.cue_only;
     }
 
     updateStepStatus({ connected, cameraOn, cueActive } = {}) {
@@ -441,8 +476,8 @@ class SideTracker {
 
         if (runType === 'FRONT' || runType === 'BACK' || runType === 'AUTO') {
             return shoulderHipOffsetPct < 8
-                ? 'Angle test: not ideal. Move more side-on or 45 degrees for front/back.'
-                : 'Angle test: usable for front/back view.';
+                ? 'Angle test: not ideal. Move more side-on or 45 degrees for forward/backward.'
+                : 'Angle test: usable for forward/backward view.';
         }
 
         return 'Angle test: usable.';
@@ -459,6 +494,7 @@ class SideTracker {
         this.elements.trackerDelayMax.value = sessionSettings.delayMax ?? 3.0;
         this.elements.trackerAudioSelect.value = sessionSettings.audioEnabled === false ? 'off' : 'on';
         this.elements.trackerAudioMode.value = sessionSettings.audioMode || 'cue_only';
+        this.updateAudioModeInfo(this.elements.trackerAudioMode.value);
         this.elements.trackerFieldRadius.value = sessionSettings.drillFieldRadiusMeters ?? DEFAULT_FIELD_RADIUS_METERS;
         this.elements.trackerCameraDistance.value = sessionSettings.cameraDistanceMeters ?? '';
         this.elements.trackerCameraMode.value = sessionSettings.cameraMode || 'auto';
@@ -700,7 +736,7 @@ class SideTracker {
 
         if (this.activeRep) {
             const sampleCount = this.getRepSamples(this.activeRep.repId).length;
-            this.elements.bodyFeedback.textContent = `Capturing ${this.activeRep.cue} rep... ${sampleCount} samples`;
+            this.elements.bodyFeedback.textContent = `Capturing ${getCueDisplayName(this.activeRep.cue)} rep... ${sampleCount} samples`;
         } else if (!this.isCalibratingAngle) {
             this.elements.bodyFeedback.textContent = 'Camera ready. Coach feedback appears after each rep.';
         }

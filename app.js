@@ -710,6 +710,15 @@ class CueCutApp {
         return String(cue || '').toLowerCase();
     }
 
+    static getCueDisplayName(cue) {
+        return {
+            FRONT: 'FORWARD',
+            BACK: 'BACKWARD',
+            LEFT: 'LEFT',
+            RIGHT: 'RIGHT'
+        }[cue] || cue;
+    }
+
     static getCameraModeForCue(cue, preferredMode = 'auto') {
         if (preferredMode === 'front_view' || preferredMode === 'side_view') return preferredMode;
         return cue === 'LEFT' || cue === 'RIGHT' ? 'front_view' : 'side_view';
@@ -1210,7 +1219,7 @@ class CueCutApp {
         });
         
         // Update UI
-        document.getElementById('cueDisplay').textContent = this.currentRepData.cue;
+        document.getElementById('cueDisplay').textContent = CueCutApp.getCueDisplayName(this.currentRepData.cue);
         document.getElementById('cueSubtext').textContent = 'MOVE!';
         
         // Start motion detection if enabled
@@ -1234,7 +1243,7 @@ class CueCutApp {
     }
 
     goToMovementScreen() {
-        document.getElementById('currentCueDisplay').innerHTML = `Cue: <strong>${this.currentRepData.cue}</strong>`;
+        document.getElementById('currentCueDisplay').innerHTML = `Cue: <strong>${CueCutApp.getCueDisplayName(this.currentRepData.cue)}</strong>`;
         const finishButton = document.getElementById('reactionFinishedBtn');
         finishButton.disabled = false;
         finishButton.textContent = 'Reaction Finished';
@@ -1287,7 +1296,7 @@ class CueCutApp {
 
     showFeedback() {
         const rep = this.currentRepData;
-        document.getElementById('feedbackCue').textContent = rep.cue;
+        document.getElementById('feedbackCue').textContent = CueCutApp.getCueDisplayName(rep.cue);
         document.getElementById('feedbackReaction').textContent = rep.reactionMs !== null ? `${(rep.reactionMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('feedbackScoreNote').textContent = this.currentFeedbackScoreNote || '—';
         this.updateCoachFeedbackDisplay();
@@ -1465,19 +1474,19 @@ class CueCutApp {
 
         const previousBest = this.getBestReactionForCue(rep.cue);
         if (!previousBest) {
-            return `First ${rep.cue} score`;
+            return `First ${CueCutApp.getCueDisplayName(rep.cue)} score`;
         }
 
         const deltaMs = rep.reactionMs - previousBest.reactionMs;
         if (deltaMs < 0) {
-            return `New ${rep.cue} PR by ${(Math.abs(deltaMs) / 1000).toFixed(2)}s`;
+            return `New ${CueCutApp.getCueDisplayName(rep.cue)} PR by ${(Math.abs(deltaMs) / 1000).toFixed(2)}s`;
         }
 
         if (deltaMs === 0) {
-            return `Tied ${rep.cue} PR`;
+            return `Tied ${CueCutApp.getCueDisplayName(rep.cue)} PR`;
         }
 
-        return `+${(deltaMs / 1000).toFixed(2)}s from ${rep.cue} best`;
+        return `+${(deltaMs / 1000).toFixed(2)}s from ${CueCutApp.getCueDisplayName(rep.cue)} best`;
     }
 
     getResultSoundType(rep) {
@@ -1577,7 +1586,7 @@ class CueCutApp {
         const bestRep = tracked
             .filter(rep => Number.isFinite(Number(rep.coachScore)))
             .sort((a, b) => Number(b.coachScore) - Number(a.coachScore))[0];
-        const bestText = bestRep ? ` Best tracked rep: ${bestRep.cue} ${bestRep.coachScore}/100.` : '';
+        const bestText = bestRep ? ` Best tracked rep: ${CueCutApp.getCueDisplayName(bestRep.cue)} ${bestRep.coachScore}/100.` : '';
 
         if (!mainIssue) {
             return { focus: `Main focus: repeat the best body shape.${bestText}` };
@@ -1734,7 +1743,7 @@ class CueCutApp {
             const moment = rep.coachMoment ? ` | Moment: ${rep.coachMoment}` : '';
             const coachNote = rep.coachFix ? `${score} | Fix: ${rep.coachFix}${cue}${drill}${moment}` : ' | No coach data';
             html += `<div class="data-item">
-                <div><strong>${index + 1}. ${rep.cue}</strong> | ${reaction}${coachNote}</div>
+                <div><strong>${index + 1}. ${CueCutApp.getCueDisplayName(rep.cue)}</strong> | ${reaction}${coachNote}</div>
             </div>`;
         });
         html += '</div>';
@@ -1810,7 +1819,7 @@ class CueCutApp {
 
         scoresByCue.forEach(group => {
             html += `<tr>
-                <td>${group.cue}</td>
+                <td>${CueCutApp.getCueDisplayName(group.cue)}</td>
                 <td>${group.best ? this.formatSeconds(group.best.reactionMs) : '-'}</td>
                 <td>${group.latest ? this.formatSeconds(group.latest.reactionMs) : '-'}</td>
                 <td>${this.formatLatestChange(group.best, group.latest)}</td>

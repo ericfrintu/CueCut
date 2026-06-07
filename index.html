@@ -159,7 +159,10 @@
                             <option value="compare">Compare Mode</option>
                             <option value="minimal">Minimal</option>
                         </select>
-                        <p id="audioModeInfo" class="setting-info">Cue Only: short direction sounds for reaction timing.</p>
+                        <div class="setting-info-panel">
+                            <strong>Info</strong>
+                            <p id="audioModeInfo" class="setting-info">Cue Only: short direction sounds for reaction timing.</p>
+                        </div>
                     </div>
                     <div class="setting-item">
                         <label>Volume:</label>
@@ -227,8 +230,8 @@
                     <div class="setting-item">
                         <label>Cues:</label>
                         <div class="cue-toggles">
-                            <label><input type="checkbox" class="cueToggle" value="FRONT"> FRONT</label>
-                            <label><input type="checkbox" class="cueToggle" value="BACK"> BACK</label>
+                            <label><input type="checkbox" class="cueToggle" value="FRONT"> FORWARD</label>
+                            <label><input type="checkbox" class="cueToggle" value="BACK"> BACKWARD</label>
                             <label><input type="checkbox" class="cueToggle" value="LEFT"> LEFT</label>
                             <label><input type="checkbox" class="cueToggle" value="RIGHT"> RIGHT</label>
                         </div>
@@ -304,6 +307,6 @@
         };
         window.dispatchEvent(new Event('cuecut:firebase-ready'));
     </script>
-    <script src="app.js?v=7"></script>
+    <script src="app.js?v=8"></script>
 </body>
 </html>

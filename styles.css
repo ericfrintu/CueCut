@@ -377,6 +377,22 @@ body {
     font-family: 'Courier New', monospace;
 }
 
+.setting-info-panel {
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px solid rgba(156, 255, 156, 0.35);
+    border-radius: 4px;
+    background: rgba(0, 255, 0, 0.08);
+}
+
+.setting-info-panel strong {
+    display: block;
+    color: #fff;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+
 .cue-toggles {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -644,10 +660,15 @@ body {
     text-align: right;
 }
 
-.run-tabs,
+.run-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
 .tracker-cue-settings {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
 }
 
@@ -879,6 +900,13 @@ body {
     font-family: 'Courier New', monospace;
 }
 
+.tracker-setting-info {
+    color: #9cff9c;
+    font-size: 0.68rem;
+    line-height: 1.3;
+    text-transform: none;
+}
+
 .tracker-metrics th,
 .tracker-metrics td {
     padding: 10px;
@@ -906,7 +934,7 @@ body {
     }
 
     .run-tabs {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .tracker-settings-grid,
