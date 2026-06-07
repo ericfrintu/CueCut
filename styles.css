@@ -393,6 +393,121 @@ body {
     margin-bottom: 2px;
 }
 
+.info-button {
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px solid #00ff00;
+    border-radius: 4px;
+    background: #00ff00;
+    color: #000;
+    font: 700 0.85rem 'Courier New', monospace;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.info-button:focus,
+.info-button:hover {
+    outline: none;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.65);
+}
+
+.popup-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.82);
+}
+
+.popup-overlay.hidden {
+    display: none;
+}
+
+.popup-panel {
+    width: min(520px, 100%);
+    max-height: 88vh;
+    overflow: auto;
+    border: 1px solid rgba(0, 255, 0, 0.65);
+    border-radius: 6px;
+    background: #050505;
+    box-shadow: 0 0 28px rgba(0, 255, 0, 0.2);
+}
+
+.popup-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px;
+    border-bottom: 1px solid rgba(0, 255, 0, 0.35);
+    background: #050505;
+}
+
+.popup-header h2 {
+    margin: 0;
+    color: #00ff00;
+    font-size: 1.15rem;
+}
+
+.icon-button {
+    min-width: 42px;
+    min-height: 42px;
+    border: 1px solid #00ff00;
+    border-radius: 4px;
+    background: #000;
+    color: #00ff00;
+    font: 700 1rem 'Courier New', monospace;
+    cursor: pointer;
+}
+
+.icon-button:focus,
+.icon-button:hover {
+    outline: none;
+    background: #00ff00;
+    color: #000;
+}
+
+.sound-mode-info-list {
+    display: grid;
+    gap: 10px;
+    padding: 14px;
+}
+
+.sound-mode-card {
+    padding: 12px;
+    border: 1px solid rgba(0, 255, 0, 0.22);
+    border-radius: 4px;
+    background: rgba(0, 255, 0, 0.05);
+}
+
+.sound-mode-card.active {
+    border-color: #00ff00;
+    background: rgba(0, 255, 0, 0.12);
+}
+
+.sound-mode-card h3 {
+    margin: 0 0 8px;
+    color: #fff;
+    font-size: 0.98rem;
+}
+
+.sound-mode-card p {
+    margin: 6px 0;
+    color: #bfffbf;
+    font-size: 0.8rem;
+    line-height: 1.35;
+}
+
+.sound-mode-card strong {
+    color: #00ff00;
+}
+
 .cue-toggles {
     display: grid;
     grid-template-columns: 1fr 1fr;

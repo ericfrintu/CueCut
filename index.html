@@ -162,6 +162,7 @@
                         <div class="setting-info-panel">
                             <strong>Info</strong>
                             <p id="audioModeInfo" class="setting-info">Cue Only: short direction sounds for reaction timing.</p>
+                            <button id="audioModeInfoBtn" class="info-button focusable" tabindex="0" type="button">Sound Mode Info</button>
                         </div>
                     </div>
                     <div class="setting-item">
@@ -244,6 +245,16 @@
             </div>
         </div>
 
+        <div id="audioModePopup" class="popup-overlay hidden" aria-hidden="true">
+            <div class="popup-panel" role="dialog" aria-modal="true" aria-labelledby="audioModePopupTitle">
+                <div class="popup-header">
+                    <h2 id="audioModePopupTitle">Sound Mode Info</h2>
+                    <button id="closeAudioModeInfoBtn" class="icon-button focusable" tabindex="0" type="button" aria-label="Close sound mode info">X</button>
+                </div>
+                <div id="audioModePopupContent" class="sound-mode-info-list"></div>
+            </div>
+        </div>
+
         <!-- Data View Screen -->
         <div id="dataViewScreen" class="screen">
             <div class="screen-content">
@@ -307,6 +318,6 @@
         };
         window.dispatchEvent(new Event('cuecut:firebase-ready'));
     </script>
-    <script src="app.js?v=8"></script>
+    <script src="app.js?v=9"></script>
 </body>
 </html>
