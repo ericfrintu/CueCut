@@ -803,7 +803,9 @@ class CueCutApp {
         document.getElementById('audioModeSelect').value = this.settings.get('audioMode');
         document.getElementById('audioModeSelect').addEventListener('change', (e) => {
             this.settings.set('audioMode', e.target.value);
+            this.updateAudioModeInfo(e.target.value);
         });
+        this.updateAudioModeInfo(this.settings.get('audioMode'));
 
         ['masterVolume', 'cueVolume', 'feedbackVolume'].forEach(id => {
             const element = document.getElementById(id);
@@ -876,6 +878,23 @@ class CueCutApp {
         });
 
         document.getElementById('settingsBackBtn').addEventListener('click', () => this.goToHome());
+    }
+
+    updateAudioModeInfo(mode) {
+        const infoEl = document.getElementById('audioModeInfo');
+        if (!infoEl) return;
+
+        const descriptions = {
+            off: 'Off: no cue sounds, result tones, voice, or sound-print playback.',
+            cue_only: 'Cue Only: short direction sounds for fast reaction timing. Best default for testing.',
+            live_sonification: 'Live Sonification: uses pose samples to shape sound. Advanced mode, use only when tracking is confident.',
+            coach_review: 'Coach Review: no live cue clutter; use saved sound prints after reps for review.',
+            reference: 'Reference Sound: rehearse or replay a saved good rep sound before trying again.',
+            compare: 'Compare Mode: listen for timing differences between current, best, or reference reps.',
+            minimal: 'Minimal: keeps sounds short and quiet so the athlete is not distracted.'
+        };
+
+        infoEl.textContent = descriptions[mode] || descriptions.cue_only;
     }
 
     loadSettings() {

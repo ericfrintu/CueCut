@@ -369,6 +369,14 @@ body {
     box-shadow: 0 0 10px rgba(0, 255, 0, 0.6);
 }
 
+.setting-info {
+    margin: 8px 0 0;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    color: #9cff9c;
+    font-family: 'Courier New', monospace;
+}
+
 .cue-toggles {
     display: grid;
     grid-template-columns: 1fr 1fr;
