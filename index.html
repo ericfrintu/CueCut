@@ -94,6 +94,8 @@
                     <p>Avg Reaction: <span id="summaryAvgReaction">—</span></p>
                     <p>Best Reaction: <span id="summaryBestReaction">—</span></p>
                     <p>Fatigue: <span id="summaryFatigue">—</span></p>
+                    <p>Field Radius: <span id="summaryFieldRadius">15m</span></p>
+                    <p>Camera Distance: <span id="summaryCameraDistance">—</span></p>
                     <p>Main Focus: <span id="summaryCoachFocus">—</span></p>
                 </div>
                 <div id="summaryChart" class="summary-chart"></div>
@@ -151,11 +153,10 @@
                     <div class="setting-item">
                         <label>Cues:</label>
                         <div class="cue-toggles">
+                            <label><input type="checkbox" class="cueToggle" value="FRONT"> FRONT</label>
+                            <label><input type="checkbox" class="cueToggle" value="BACK"> BACK</label>
                             <label><input type="checkbox" class="cueToggle" value="LEFT"> LEFT</label>
                             <label><input type="checkbox" class="cueToggle" value="RIGHT"> RIGHT</label>
-                            <label><input type="checkbox" class="cueToggle" value="DROP"> DROP</label>
-                            <label><input type="checkbox" class="cueToggle" value="TURN"> TURN</label>
-                            <label><input type="checkbox" class="cueToggle" value="GO"> GO</label>
                         </div>
                     </div>
                 </div>
@@ -229,6 +230,6 @@
         };
         window.dispatchEvent(new Event('cuecut:firebase-ready'));
     </script>
-    <script src="app.js?v=4"></script>
+    <script src="app.js?v=5"></script>
 </body>
 </html>

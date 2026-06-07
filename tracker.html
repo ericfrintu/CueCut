@@ -40,11 +40,10 @@
             </div>
             <div class="run-tabs" id="runTypeTabs">
                 <button class="run-tab active" data-run-type="AUTO">Auto</button>
+                <button class="run-tab" data-run-type="FRONT">Front</button>
+                <button class="run-tab" data-run-type="BACK">Back</button>
                 <button class="run-tab" data-run-type="LEFT">Left</button>
                 <button class="run-tab" data-run-type="RIGHT">Right</button>
-                <button class="run-tab" data-run-type="DROP">Drop</button>
-                <button class="run-tab" data-run-type="TURN">Turn</button>
-                <button class="run-tab" data-run-type="GO">Go</button>
             </div>
             <div class="camera-guide">
                 <p id="cameraPlacement">Use Auto to follow the cue from the glasses.</p>
@@ -84,13 +83,28 @@
                         <option value="off">Off</option>
                     </select>
                 </label>
+                <label>
+                    Field Radius (m)
+                    <input id="trackerFieldRadius" type="number" min="5" max="30" step="0.5" value="15">
+                </label>
+                <label>
+                    Camera Dist. (m)
+                    <input id="trackerCameraDistance" type="number" min="2" max="60" step="0.5" placeholder="required">
+                </label>
+                <label>
+                    Camera Mode
+                    <select id="trackerCameraMode">
+                        <option value="auto">Auto by direction</option>
+                        <option value="front_view">Front view</option>
+                        <option value="side_view">Side view</option>
+                    </select>
+                </label>
             </div>
             <div class="tracker-cue-settings">
+                <label><input type="checkbox" class="trackerCueToggle" value="FRONT" checked> Front</label>
+                <label><input type="checkbox" class="trackerCueToggle" value="BACK" checked> Back</label>
                 <label><input type="checkbox" class="trackerCueToggle" value="LEFT" checked> Left</label>
                 <label><input type="checkbox" class="trackerCueToggle" value="RIGHT" checked> Right</label>
-                <label><input type="checkbox" class="trackerCueToggle" value="DROP" checked> Drop</label>
-                <label><input type="checkbox" class="trackerCueToggle" value="TURN" checked> Turn</label>
-                <label><input type="checkbox" class="trackerCueToggle" value="GO" checked> Go</label>
             </div>
         </section>
 
@@ -125,9 +139,9 @@
                 </tbody>
             </table>
         </section>
-        <p class="tracker-version">v16</p>
+        <p class="tracker-version">v17</p>
     </main>
 
-    <script type="module" src="tracker.js?v=16"></script>
+    <script type="module" src="tracker.js?v=17"></script>
 </body>
 </html>

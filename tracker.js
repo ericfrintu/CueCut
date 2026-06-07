@@ -59,32 +59,30 @@ const POSE_LOADER_OPTIONS = [
 const RUN_GUIDANCE = {
     AUTO: {
         placement: 'Auto follows the active glasses cue.',
-        reads: 'Pick a manual view only when you move the phone to that angle.'
+        reads: '4 Direction Drill: cones are 15m front, back, left, and right from center.'
+    },
+    FRONT: {
+        placement: 'Side camera mode: place camera beside the front/back lane.',
+        reads: 'Reads acceleration posture, shin angle, first-step projection, and stride reach.'
+    },
+    BACK: {
+        placement: 'Side camera mode: place camera beside the front/back lane.',
+        reads: 'Reads backpedal posture, braking shape, trunk angle, and knee bend.'
     },
     LEFT: {
-        placement: 'Front view: face the athlete as they cut left.',
-        reads: 'Reads right plant knee stack, plant bend, base width, and chest-over-hips.'
+        placement: 'Front camera mode: face the athlete for left/right movement.',
+        reads: 'Reads lateral push-off, plant-knee stack, plant bend, and chest-over-hips.'
     },
     RIGHT: {
-        placement: 'Front view: face the athlete as they cut right.',
-        reads: 'Reads left plant knee stack, plant bend, base width, and chest-over-hips.'
-    },
-    DROP: {
-        placement: 'Side view: place phone beside the athlete.',
-        reads: 'Reads hip drop, knee bend, and trunk lean.'
-    },
-    TURN: {
-        placement: 'Side or 45-degree view: capture the turn setup.',
-        reads: 'Reads turn load, trunk angle, knee bend, and base.'
-    },
-    GO: {
-        placement: 'Side view: place phone beside the acceleration lane.',
-        reads: 'Reads launch lean, knee bend, and base width.'
+        placement: 'Front camera mode: face the athlete for left/right movement.',
+        reads: 'Reads lateral push-off, plant-knee stack, plant bend, and chest-over-hips.'
     }
 };
 
 const MIN_TRACKING_POSE_SCORE = 0.25;
 const LANDMARK_VISIBLE_THRESHOLD = 0.2;
+const TRACKER_CUE_BANK = ['FRONT', 'BACK', 'LEFT', 'RIGHT'];
+const DEFAULT_FIELD_RADIUS_METERS = 15;
 
 class SideTracker {
     constructor() {
@@ -142,6 +140,9 @@ class SideTracker {
             trackerDelayMin: document.getElementById('trackerDelayMin'),
             trackerDelayMax: document.getElementById('trackerDelayMax'),
             trackerAudioSelect: document.getElementById('trackerAudioSelect'),
+            trackerFieldRadius: document.getElementById('trackerFieldRadius'),
+            trackerCameraDistance: document.getElementById('trackerCameraDistance'),
+            trackerCameraMode: document.getElementById('trackerCameraMode'),
             trackerCueToggles: document.querySelectorAll('.trackerCueToggle'),
             runTabs: document.querySelectorAll('.run-tab')
         };
@@ -172,6 +173,9 @@ class SideTracker {
             this.elements.trackerDelayMin,
             this.elements.trackerDelayMax,
             this.elements.trackerAudioSelect,
+            this.elements.trackerFieldRadius,
+            this.elements.trackerCameraDistance,
+            this.elements.trackerCameraMode,
             ...this.elements.trackerCueToggles
         ].forEach(element => {
             element.addEventListener('change', () => this.saveSessionSettings());
@@ -334,6 +338,12 @@ class SideTracker {
         return this.selectedRunType;
     }
 
+    getCameraModeForRunType(runType) {
+        if (runType === 'LEFT' || runType === 'RIGHT') return 'front_view';
+        if (runType === 'FRONT' || runType === 'BACK') return 'side_view';
+        return 'auto';
+    }
+
     updateCameraGuide() {
         const effectiveType = this.getEffectiveRunType();
         const guidance = RUN_GUIDANCE[effectiveType] || RUN_GUIDANCE.AUTO;
@@ -427,13 +437,18 @@ class SideTracker {
                 : 'Angle test: usable for cut form.';
         }
 
-        if (runType === 'GO' || runType === 'DROP' || runType === 'TURN' || runType === 'AUTO') {
+        if (runType === 'FRONT' || runType === 'BACK' || runType === 'AUTO') {
             return shoulderHipOffsetPct < 8
-                ? 'Angle test: not ideal. Move more side-on or 45 degrees for this rep.'
-                : 'Angle test: usable for acceleration view.';
+                ? 'Angle test: not ideal. Move more side-on or 45 degrees for front/back.'
+                : 'Angle test: usable for front/back view.';
         }
 
         return 'Angle test: usable.';
+    }
+
+    normalizeCueList(cues) {
+        const migrated = cues.map(cue => cue === 'GO' ? 'FRONT' : cue === 'DROP' ? 'BACK' : cue);
+        return [...new Set(migrated.filter(cue => TRACKER_CUE_BANK.includes(cue)))];
     }
 
     loadSessionSettings(sessionSettings) {
@@ -441,8 +456,13 @@ class SideTracker {
         this.elements.trackerDelayMin.value = sessionSettings.delayMin ?? 1.0;
         this.elements.trackerDelayMax.value = sessionSettings.delayMax ?? 3.0;
         this.elements.trackerAudioSelect.value = sessionSettings.audioEnabled === false ? 'off' : 'on';
+        this.elements.trackerFieldRadius.value = sessionSettings.drillFieldRadiusMeters ?? DEFAULT_FIELD_RADIUS_METERS;
+        this.elements.trackerCameraDistance.value = sessionSettings.cameraDistanceMeters ?? '';
+        this.elements.trackerCameraMode.value = sessionSettings.cameraMode || 'auto';
 
-        const enabledCues = Array.isArray(sessionSettings.enabledCues) ? sessionSettings.enabledCues : ['LEFT', 'RIGHT', 'DROP', 'TURN', 'GO'];
+        const enabledCues = Array.isArray(sessionSettings.enabledCues)
+            ? this.normalizeCueList(sessionSettings.enabledCues)
+            : TRACKER_CUE_BANK;
         this.elements.trackerCueToggles.forEach(toggle => {
             toggle.checked = enabledCues.includes(toggle.value);
         });
@@ -457,9 +477,11 @@ class SideTracker {
         const enabledCues = [...this.elements.trackerCueToggles]
             .filter(toggle => toggle.checked)
             .map(toggle => toggle.value);
-        const safeCues = enabledCues.length ? enabledCues : ['GO'];
+        const safeCues = enabledCues.length ? enabledCues : ['FRONT'];
         const delayMin = parseFloat(this.elements.trackerDelayMin.value);
         const delayMax = parseFloat(this.elements.trackerDelayMax.value);
+        const fieldRadius = parseFloat(this.elements.trackerFieldRadius.value);
+        const cameraDistance = parseFloat(this.elements.trackerCameraDistance.value);
         const sessionSettings = {
             audioEnabled: this.elements.trackerAudioSelect.value === 'on',
             timingMode: 'manual',
@@ -467,7 +489,11 @@ class SideTracker {
             sessionGoalReps: parseInt(this.elements.trackerGoalSelect.value, 10),
             delayMin: Number.isFinite(delayMin) ? delayMin : 1.0,
             delayMax: Number.isFinite(delayMax) ? Math.max(delayMax, delayMin || 1.0) : 3.0,
-            enabledCues: safeCues
+            enabledCues: this.normalizeCueList(safeCues),
+            drillType: '4_direction',
+            drillFieldRadiusMeters: Number.isFinite(fieldRadius) ? fieldRadius : DEFAULT_FIELD_RADIUS_METERS,
+            cameraDistanceMeters: Number.isFinite(cameraDistance) ? cameraDistance : '',
+            cameraMode: this.elements.trackerCameraMode.value || 'auto'
         };
 
         this.elements.settingsSaveStatus.textContent = 'Saving...';
@@ -818,8 +844,10 @@ class SideTracker {
         let kneeLabel = 'athletic bend';
         let baseLabel = 'stable base';
 
-        if (runType === 'GO') {
+        if (runType === 'FRONT') {
             ({ leanLabel, kneeLabel, baseLabel } = this.addAccelerationFeedback(issues, strengths, metrics));
+        } else if (runType === 'BACK') {
+            ({ leanLabel, kneeLabel, baseLabel } = this.addBackpedalFeedback(issues, strengths, metrics));
         } else if (runType === 'LEFT' || runType === 'RIGHT') {
             ({ leanLabel, kneeLabel, baseLabel } = this.addCuttingFeedback(issues, strengths, metrics, runType));
         } else {
@@ -925,6 +953,35 @@ class SideTracker {
         return { leanLabel, kneeLabel, baseLabel };
     }
 
+    addBackpedalFeedback(issues, strengths, metrics) {
+        let leanLabel = 'controlled backpedal';
+        let kneeLabel = 'hips loaded';
+        let baseLabel = 'feet under hips';
+
+        if (metrics.trunkLeanDeg < 6) {
+            leanLabel = 'too upright';
+            this.addIssue(issues, 'upright-backpedal', 'Backpedal posture is too upright', 'Keep the hips slightly lower and chest controlled so the first steps do not pop straight up.', 'Hips low, chest quiet.', 'Backpedal posture holds', 4, metrics.poseScore, 'first steps');
+        } else {
+            strengths.push('controlled trunk angle');
+        }
+
+        if (metrics.kneeAngleDeg > 165) {
+            kneeLabel = 'legs too tall';
+            this.addIssue(issues, 'tall-backpedal', 'Backpedal steps look too tall', 'Load the hips and knees so the athlete can brake and redirect without standing up.', 'Stay loaded while moving back.', 'Backpedal-to-stick reps', 4, metrics.poseScore, 'first steps');
+        } else {
+            strengths.push('loaded backpedal position');
+        }
+
+        if (metrics.footReachPct > 120) {
+            baseLabel = 'reaching back';
+            this.addIssue(issues, 'backpedal-reach', 'Feet appear to reach away from the hips', 'Keep steps shorter and quicker so the athlete can stop or redirect at the cone.', 'Quick feet under hips.', 'Short backpedal cadence reps', 3, metrics.poseScore, 'foot strike');
+        } else {
+            strengths.push('feet stay close enough to recover');
+        }
+
+        return { leanLabel, kneeLabel, baseLabel };
+    }
+
     addCuttingFeedback(issues, strengths, metrics, runType) {
         const plantSide = runType === 'LEFT' ? 'right' : 'left';
         const plantKneeStackPct = plantSide === 'right' ? metrics.rightKneeStackPct : metrics.leftKneeStackPct;
@@ -995,10 +1052,9 @@ class SideTracker {
     }
 
     defaultDrill(runType) {
-        if (runType === 'GO') return 'Wall-drive marches';
+        if (runType === 'FRONT') return 'Wall-drive marches';
+        if (runType === 'BACK') return 'Backpedal-to-stick reps';
         if (runType === 'LEFT' || runType === 'RIGHT') return 'Slow plant-and-exit cuts';
-        if (runType === 'DROP') return 'Snap-down to sprint';
-        if (runType === 'TURN') return 'Walk-through turn exits';
         return 'Controlled technique rep';
     }
 
@@ -1018,6 +1074,11 @@ class SideTracker {
             sessionCode: this.sessionCode,
             repId: rep.repId,
             cue: rep.cue,
+            drillType: rep.drillType || '4_direction',
+            direction: rep.direction || String(rep.cue || '').toLowerCase(),
+            cameraMode: rep.cameraMode || this.getCameraModeForRunType(runType),
+            drillFieldRadiusMeters: rep.drillFieldRadiusMeters || DEFAULT_FIELD_RADIUS_METERS,
+            cameraDistanceMeters: rep.cameraDistanceMeters ?? '',
             runType,
             sampleMs: this.getActiveRepSampleMs(),
             metrics,
@@ -1091,6 +1152,11 @@ class SideTracker {
                 latestTrackingFeedback: {
                     repId: rep.repId,
                     cue: rep.cue,
+                    drillType: rep.drillType || '4_direction',
+                    direction: rep.direction || String(rep.cue || '').toLowerCase(),
+                    cameraMode: rep.cameraMode || this.getCameraModeForRunType(summary.runType),
+                    drillFieldRadiusMeters: rep.drillFieldRadiusMeters || DEFAULT_FIELD_RADIUS_METERS,
+                    cameraDistanceMeters: rep.cameraDistanceMeters ?? '',
                     runType: summary.runType,
                     metrics: summary.metrics,
                     feedback: summary.feedback,
@@ -1178,8 +1244,10 @@ class SideTracker {
         const averageScore = Math.round(this.average(samples.map(sample => sample.feedback.score || 70)));
         const averageConfidence = this.average(samples.map(sample => sample.metrics.poseScore || 0));
         const confidence = averageConfidence < 0.35 ? 'low' : averageConfidence < 0.55 ? 'medium' : 'high';
-        const defaultCue = runType === 'GO'
+        const defaultCue = runType === 'FRONT'
             ? 'Push back through the ground for the first three steps.'
+            : runType === 'BACK'
+                ? 'Stay loaded and keep quick steps under the hips.'
             : 'Clean up the plant before you exit.';
         const defaultDrill = this.defaultDrill(runType);
 
@@ -1313,7 +1381,7 @@ class SideTracker {
         const leftLegVisible = [23, 25, 27].filter(isVisible).length >= 2;
         const rightLegVisible = [24, 26, 28].filter(isVisible).length >= 2;
         const torsoVisible = torsoPoints.filter(isVisible).length >= 2;
-        const sideViewRun = ['GO', 'DROP', 'TURN', 'AUTO'].includes(runType);
+        const sideViewRun = ['FRONT', 'BACK', 'AUTO'].includes(runType);
 
         if (sideViewRun && torsoVisible && (leftLegVisible || rightLegVisible)) {
             return Math.max(0.5, averageVisibility);

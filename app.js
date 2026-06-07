@@ -7,7 +7,9 @@
 // DATA MODEL
 // ============================================================================
 
-const CUE_BANK = ['LEFT', 'RIGHT', 'DROP', 'TURN', 'GO'];
+const CUE_BANK = ['FRONT', 'BACK', 'LEFT', 'RIGHT'];
+const DRILL_TYPE = '4_direction';
+const DEFAULT_FIELD_RADIUS_METERS = 15;
 
 class RepData {
     constructor(cue, sessionId) {
@@ -15,6 +17,11 @@ class RepData {
         this.sessionId = sessionId;
         this.timestamp = new Date().toISOString();
         this.cue = cue;
+        this.drillType = DRILL_TYPE;
+        this.direction = CueCutApp.getDirectionFromCue(cue);
+        this.cameraMode = CueCutApp.getCameraModeForCue(cue);
+        this.drillFieldRadiusMeters = DEFAULT_FIELD_RADIUS_METERS;
+        this.cameraDistanceMeters = '';
         this.cueStartMs = null;
         this.firstMovementMs = null;
         this.finishMs = null;
@@ -53,6 +60,11 @@ class RepData {
             this.id,
             this.timestamp,
             this.cue,
+            this.drillType || '',
+            this.direction || '',
+            this.cameraMode || '',
+            this.drillFieldRadiusMeters || '',
+            this.cameraDistanceMeters || '',
             this.cueStartMs || '',
             this.firstMovementMs || '',
             this.finishMs || '',
@@ -74,7 +86,7 @@ class RepData {
     }
 
     static toCSVHeader() {
-        return 'rep_id,timestamp,cue,cue_start_ms,first_movement_ms,finish_ms,reaction_ms,movement_ms,total_ms,timing_mode,motion_start_ms,coach_run_type,coach_good,coach_fix,coach_cue,coach_drill,coach_score,coach_confidence,coach_moment,notes';
+        return 'rep_id,timestamp,cue,drill_type,direction,camera_mode,drill_field_radius_meters,camera_distance_meters,cue_start_ms,first_movement_ms,finish_ms,reaction_ms,movement_ms,total_ms,timing_mode,motion_start_ms,coach_run_type,coach_good,coach_fix,coach_cue,coach_drill,coach_score,coach_confidence,coach_moment,notes';
     }
 
     static toCSVCell(value) {
@@ -98,6 +110,10 @@ class Settings {
             delayMin: 1.0,
             delayMax: 3.0,
             enabledCues: [...CUE_BANK],
+            drillType: DRILL_TYPE,
+            drillFieldRadiusMeters: DEFAULT_FIELD_RADIUS_METERS,
+            cameraDistanceMeters: '',
+            cameraMode: 'auto',
             motionDetectionEnabled: false
         };
         this.load();
@@ -287,14 +303,13 @@ class AudioFeedback {
 
     getCuePattern(cueText) {
         const patterns = {
-            GO: [{ frequency: 1320, duration: 0.18, pan: 0 }],
+            FRONT: [{ frequency: 1320, duration: 0.18, pan: 0 }],
+            BACK: [
+                { frequency: 520, duration: 0.12, pan: 0 },
+                { frequency: 420, duration: 0.14, pan: 0, delay: 0.17 }
+            ],
             LEFT: [{ frequency: 720, duration: 0.16, pan: -1 }],
-            RIGHT: [{ frequency: 720, duration: 0.16, pan: 1 }],
-            TURN: [{ frequency: 220, duration: 0.3, pan: 0 }],
-            DROP: [
-                { frequency: 560, duration: 0.12, pan: 0 },
-                { frequency: 560, duration: 0.12, pan: 0, delay: 0.18 }
-            ]
+            RIGHT: [{ frequency: 720, duration: 0.16, pan: 1 }]
         };
 
         return patterns[cueText] || null;
@@ -554,6 +569,15 @@ class CloudStorage {
 // ============================================================================
 
 class CueCutApp {
+    static getDirectionFromCue(cue) {
+        return String(cue || '').toLowerCase();
+    }
+
+    static getCameraModeForCue(cue, preferredMode = 'auto') {
+        if (preferredMode === 'front_view' || preferredMode === 'side_view') return preferredMode;
+        return cue === 'LEFT' || cue === 'RIGHT' ? 'front_view' : 'side_view';
+    }
+
     constructor() {
         this.settings = new Settings();
         this.storage = new DataStorage();
@@ -688,12 +712,20 @@ class CueCutApp {
 
     loadSettings() {
         const enabledCues = this.settings.get('enabledCues') || [];
-        const activeCues = enabledCues.filter(cue => CUE_BANK.includes(cue));
+        const migratedCues = enabledCues.map(cue => cue === 'GO' ? 'FRONT' : cue === 'DROP' ? 'BACK' : cue);
+        const activeCues = [...new Set(migratedCues.filter(cue => CUE_BANK.includes(cue)))];
 
         if (activeCues.length === 0) {
             this.settings.set('enabledCues', [...CUE_BANK]);
-        } else if (activeCues.length !== enabledCues.length) {
+        } else if (activeCues.length !== enabledCues.length || activeCues.some((cue, index) => cue !== enabledCues[index])) {
             this.settings.set('enabledCues', activeCues);
+        }
+
+        if (!Number.isFinite(this.settings.get('drillFieldRadiusMeters'))) {
+            this.settings.set('drillFieldRadiusMeters', DEFAULT_FIELD_RADIUS_METERS);
+        }
+        if (!['auto', 'front_view', 'side_view'].includes(this.settings.get('cameraMode'))) {
+            this.settings.set('cameraMode', 'auto');
         }
     }
 
@@ -818,7 +850,11 @@ class CueCutApp {
             sessionGoalReps: this.settings.get('sessionGoalReps'),
             delayMin: this.settings.get('delayMin'),
             delayMax: this.settings.get('delayMax'),
-            enabledCues: this.settings.get('enabledCues')
+            enabledCues: this.settings.get('enabledCues'),
+            drillType: DRILL_TYPE,
+            drillFieldRadiusMeters: this.settings.get('drillFieldRadiusMeters'),
+            cameraDistanceMeters: this.settings.get('cameraDistanceMeters'),
+            cameraMode: this.settings.get('cameraMode')
         };
     }
 
@@ -887,6 +923,9 @@ class CueCutApp {
         if (Number.isFinite(sessionSettings.sessionGoalReps)) cleaned.sessionGoalReps = sessionSettings.sessionGoalReps;
         if (Number.isFinite(sessionSettings.delayMin)) cleaned.delayMin = sessionSettings.delayMin;
         if (Number.isFinite(sessionSettings.delayMax)) cleaned.delayMax = sessionSettings.delayMax;
+        if (Number.isFinite(sessionSettings.drillFieldRadiusMeters)) cleaned.drillFieldRadiusMeters = sessionSettings.drillFieldRadiusMeters;
+        if (sessionSettings.cameraDistanceMeters !== undefined) cleaned.cameraDistanceMeters = sessionSettings.cameraDistanceMeters;
+        if (['auto', 'front_view', 'side_view'].includes(sessionSettings.cameraMode)) cleaned.cameraMode = sessionSettings.cameraMode;
         if (Array.isArray(sessionSettings.enabledCues)) {
             const validCues = sessionSettings.enabledCues.filter(cue => CUE_BANK.includes(cue));
             if (validCues.length > 0) cleaned.enabledCues = validCues;
@@ -923,6 +962,11 @@ class CueCutApp {
         this.currentRepData = new RepData(cue, this.currentSessionId);
         this.currentRepData.sessionCode = this.currentSessionCode;
         this.currentRepData.timingMode = this.settings.get('timingMode');
+        this.currentRepData.drillType = DRILL_TYPE;
+        this.currentRepData.direction = CueCutApp.getDirectionFromCue(cue);
+        this.currentRepData.cameraMode = CueCutApp.getCameraModeForCue(cue, this.settings.get('cameraMode'));
+        this.currentRepData.drillFieldRadiusMeters = this.settings.get('drillFieldRadiusMeters') || DEFAULT_FIELD_RADIUS_METERS;
+        this.currentRepData.cameraDistanceMeters = this.settings.get('cameraDistanceMeters') || '';
 
         // Show waiting screen
         this.goToScreen('waitingScreen');
@@ -942,6 +986,11 @@ class CueCutApp {
         this.cloud.updateActiveRep(this.currentSessionId, {
             repId: this.currentRepData.id,
             cue: this.currentRepData.cue,
+            drillType: this.currentRepData.drillType,
+            direction: this.currentRepData.direction,
+            cameraMode: this.currentRepData.cameraMode,
+            drillFieldRadiusMeters: this.currentRepData.drillFieldRadiusMeters,
+            cameraDistanceMeters: this.currentRepData.cameraDistanceMeters,
             sessionCode: this.currentSessionCode,
             status: 'active',
             cueStartedAt: new Date().toISOString()
@@ -949,7 +998,7 @@ class CueCutApp {
         
         // Update UI
         document.getElementById('cueDisplay').textContent = this.currentRepData.cue;
-        document.getElementById('cueSubtext').textContent = 'GO!';
+        document.getElementById('cueSubtext').textContent = 'MOVE!';
         
         // Play audio
         this.audio.playCue(this.currentRepData.cue);
@@ -1222,8 +1271,11 @@ class CueCutApp {
         const fatigue = this.calculateFatigue(reps);
         const trackedReps = reps.filter(rep => rep.coachFix).length;
         const coachSummary = this.calculateCoachSummary(reps);
+        const setupRep = [...reps].reverse().find(rep => rep.drillFieldRadiusMeters || rep.cameraDistanceMeters);
+        const drillFieldRadiusMeters = setupRep?.drillFieldRadiusMeters || this.settings.get('drillFieldRadiusMeters') || DEFAULT_FIELD_RADIUS_METERS;
+        const cameraDistanceMeters = setupRep?.cameraDistanceMeters || this.settings.get('cameraDistanceMeters') || '';
 
-        return { totalReps, trackedReps, avgReactionMs, bestReactionMs, avgMovementMs, fatigue, coachSummary };
+        return { totalReps, trackedReps, avgReactionMs, bestReactionMs, avgMovementMs, fatigue, coachSummary, drillFieldRadiusMeters, cameraDistanceMeters };
     }
 
     showSummary(stats, sessionReps) {
@@ -1232,6 +1284,10 @@ class CueCutApp {
         document.getElementById('summaryAvgReaction').textContent = stats.avgReactionMs > 0 ? `${(stats.avgReactionMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('summaryBestReaction').textContent = stats.bestReactionMs > 0 ? `${(stats.bestReactionMs / 1000).toFixed(2)}s` : '—';
         document.getElementById('summaryFatigue').textContent = stats.fatigue;
+        const fieldRadiusEl = document.getElementById('summaryFieldRadius');
+        if (fieldRadiusEl) fieldRadiusEl.textContent = `${stats.drillFieldRadiusMeters || DEFAULT_FIELD_RADIUS_METERS}m`;
+        const cameraDistanceEl = document.getElementById('summaryCameraDistance');
+        if (cameraDistanceEl) cameraDistanceEl.textContent = stats.cameraDistanceMeters ? `${stats.cameraDistanceMeters}m` : 'not entered';
         const focusEl = document.getElementById('summaryCoachFocus');
         if (focusEl) {
             focusEl.textContent = stats.coachSummary?.focus || 'No coach data yet';
