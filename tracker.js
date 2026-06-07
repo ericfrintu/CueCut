@@ -87,6 +87,14 @@ const MIN_TRACKING_POSE_SCORE = 0.25;
 const LANDMARK_VISIBLE_THRESHOLD = 0.2;
 const TRACKER_CUE_BANK = ['FRONT', 'BACK', 'LEFT', 'RIGHT'];
 const DEFAULT_FIELD_RADIUS_METERS = 15;
+const MARKER_TYPES = ['center', 'forward', 'backward', 'left', 'right'];
+const MARKER_LABELS = {
+    center: 'Center',
+    forward: 'Forward',
+    backward: 'Backward',
+    left: 'Left',
+    right: 'Right'
+};
 
 function getCueDisplayName(cue) {
     return {
@@ -121,6 +129,8 @@ class SideTracker {
         this.latestRunType = 'AUTO';
         this.isCalibratingAngle = false;
         this.angleCalibrationSamples = [];
+        this.selectedMarker = 'center';
+        this.fieldMarkers = {};
 
         this.elements = {
             sessionCodeInput: document.getElementById('sessionCodeInput'),
@@ -163,6 +173,11 @@ class SideTracker {
             trackerCameraDistance: document.getElementById('trackerCameraDistance'),
             trackerCameraMode: document.getElementById('trackerCameraMode'),
             trackerCueToggles: document.querySelectorAll('.trackerCueToggle'),
+            markerSaveStatus: document.getElementById('markerSaveStatus'),
+            markerHelp: document.getElementById('markerHelp'),
+            markerTabs: document.querySelectorAll('.marker-tab'),
+            autoDetectMarkersBtn: document.getElementById('autoDetectMarkersBtn'),
+            clearMarkersBtn: document.getElementById('clearMarkersBtn'),
             runTabs: document.querySelectorAll('.run-tab')
         };
 
@@ -189,6 +204,12 @@ class SideTracker {
         this.elements.runTabs.forEach(button => {
             button.addEventListener('click', () => this.selectRunType(button.dataset.runType));
         });
+        this.elements.markerTabs.forEach(button => {
+            button.addEventListener('click', () => this.selectMarker(button.dataset.marker));
+        });
+        this.elements.trackerCanvas.addEventListener('click', (event) => this.placeMarkerFromEvent(event));
+        this.elements.autoDetectMarkersBtn.addEventListener('click', () => this.autoDetectMarkers());
+        this.elements.clearMarkersBtn.addEventListener('click', () => this.clearMarkers());
         this.elements.trackerAudioMode.addEventListener('change', () => {
             this.updateAudioModeInfo(this.elements.trackerAudioMode.value);
             this.renderAudioModePopup(this.elements.trackerAudioMode.value);
@@ -365,6 +386,179 @@ class SideTracker {
             button.classList.toggle('active', button.dataset.runType === runType);
         });
         this.updateCameraGuide();
+    }
+
+    selectMarker(marker) {
+        if (!MARKER_TYPES.includes(marker)) return;
+        this.selectedMarker = marker;
+        this.elements.markerTabs.forEach(button => {
+            button.classList.toggle('active', button.dataset.marker === marker);
+        });
+        this.elements.markerSaveStatus.textContent = `Placing ${MARKER_LABELS[marker]}`;
+    }
+
+    placeMarkerFromEvent(event) {
+        const canvas = this.elements.trackerCanvas;
+        if (!this.isTracking || !canvas.width || !canvas.height) {
+            this.elements.markerSaveStatus.textContent = 'Start camera first';
+            return;
+        }
+
+        const rect = canvas.getBoundingClientRect();
+        const x = (event.clientX - rect.left) / rect.width;
+        const y = (event.clientY - rect.top) / rect.height;
+        if (x < 0 || x > 1 || y < 0 || y > 1) return;
+
+        this.fieldMarkers[this.selectedMarker] = {
+            x: Number(x.toFixed(4)),
+            y: Number(y.toFixed(4)),
+            source: 'manual',
+            updatedAt: new Date().toISOString()
+        };
+        this.elements.markerSaveStatus.textContent = `${MARKER_LABELS[this.selectedMarker]} marked`;
+        this.drawMarkers();
+        this.saveMarkerSettings();
+    }
+
+    clearMarkers() {
+        this.fieldMarkers = {};
+        this.elements.markerSaveStatus.textContent = 'Markers cleared';
+        this.drawMarkers();
+        this.saveMarkerSettings();
+    }
+
+    saveMarkerSettings() {
+        if (!this.sessionId) {
+            this.elements.markerSaveStatus.textContent = 'Markers local until connected';
+            return;
+        }
+
+        setDoc(doc(this.db, 'sessions', this.sessionId), {
+            sessionSettings: {
+                fieldMarkers: this.fieldMarkers
+            },
+            updatedAt: serverTimestamp()
+        }, { merge: true })
+            .then(() => {
+                this.elements.markerSaveStatus.textContent = `Saved ${Object.keys(this.fieldMarkers).length} markers`;
+            })
+            .catch(error => {
+                console.warn('Marker save failed:', error);
+                this.elements.markerSaveStatus.textContent = 'Marker save failed';
+            });
+    }
+
+    autoDetectMarkers() {
+        if (!this.isTracking || !this.elements.trackerVideo.videoWidth) {
+            this.elements.markerSaveStatus.textContent = 'Start camera first';
+            return;
+        }
+
+        const detected = this.detectBrightMarkers();
+        if (!detected.length) {
+            this.elements.markerSaveStatus.textContent = 'No bright cones found. Mark manually.';
+            return;
+        }
+
+        this.assignDetectedMarkers(detected);
+        this.elements.markerSaveStatus.textContent = `Auto found ${detected.length}. Adjust by tapping.`;
+        this.drawMarkers();
+        this.saveMarkerSettings();
+    }
+
+    detectBrightMarkers() {
+        const video = this.elements.trackerVideo;
+        const sampleCanvas = document.createElement('canvas');
+        const width = 240;
+        const height = Math.max(1, Math.round(width * (video.videoHeight || 720) / (video.videoWidth || 1280)));
+        sampleCanvas.width = width;
+        sampleCanvas.height = height;
+        const context = sampleCanvas.getContext('2d', { willReadFrequently: true });
+        context.drawImage(video, 0, 0, width, height);
+        const { data } = context.getImageData(0, 0, width, height);
+        const visited = new Uint8Array(width * height);
+        const components = [];
+
+        for (let y = 0; y < height; y += 1) {
+            for (let x = 0; x < width; x += 1) {
+                const index = y * width + x;
+                if (visited[index] || !this.isConeLikePixel(data, index)) continue;
+
+                const component = this.collectBrightComponent(data, visited, width, height, x, y);
+                if (component.count >= 14) components.push(component);
+            }
+        }
+
+        return components
+            .map(component => ({
+                x: Number((component.sumX / component.count / width).toFixed(4)),
+                y: Number((component.sumY / component.count / height).toFixed(4)),
+                count: component.count
+            }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
+    }
+
+    isConeLikePixel(data, index) {
+        const offset = index * 4;
+        const red = data[offset];
+        const green = data[offset + 1];
+        const blue = data[offset + 2];
+        const brightOrange = red > 150 && green > 55 && green < 190 && blue < 120 && red > green * 1.15;
+        const brightYellow = red > 165 && green > 145 && blue < 120;
+        const brightWhite = red > 220 && green > 220 && blue > 200;
+        return brightOrange || brightYellow || brightWhite;
+    }
+
+    collectBrightComponent(data, visited, width, height, startX, startY) {
+        const stack = [[startX, startY]];
+        let count = 0;
+        let sumX = 0;
+        let sumY = 0;
+        visited[startY * width + startX] = 1;
+
+        while (stack.length) {
+            const [x, y] = stack.pop();
+            count += 1;
+            sumX += x;
+            sumY += y;
+
+            [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+                const nextX = x + dx;
+                const nextY = y + dy;
+                if (nextX < 0 || nextX >= width || nextY < 0 || nextY >= height) return;
+                const nextIndex = nextY * width + nextX;
+                if (visited[nextIndex] || !this.isConeLikePixel(data, nextIndex)) return;
+                visited[nextIndex] = 1;
+                stack.push([nextX, nextY]);
+            });
+        }
+
+        return { count, sumX, sumY };
+    }
+
+    assignDetectedMarkers(detected) {
+        const sortedByX = [...detected].sort((a, b) => a.x - b.x);
+        const sortedByY = [...detected].sort((a, b) => a.y - b.y);
+        const nextMarkers = {};
+
+        if (detected[0]) nextMarkers.center = this.toAutoMarker(detected[0]);
+        if (sortedByY[0]) nextMarkers.forward = this.toAutoMarker(sortedByY[0]);
+        if (sortedByY[sortedByY.length - 1]) nextMarkers.backward = this.toAutoMarker(sortedByY[sortedByY.length - 1]);
+        if (sortedByX[0]) nextMarkers.left = this.toAutoMarker(sortedByX[0]);
+        if (sortedByX[sortedByX.length - 1]) nextMarkers.right = this.toAutoMarker(sortedByX[sortedByX.length - 1]);
+
+        this.fieldMarkers = nextMarkers;
+    }
+
+    toAutoMarker(marker) {
+        return {
+            x: marker.x,
+            y: marker.y,
+            source: 'auto_bright',
+            confidence: Math.min(1, Number((marker.count / 90).toFixed(2))),
+            updatedAt: new Date().toISOString()
+        };
     }
 
     getEffectiveRunType() {
@@ -586,6 +780,11 @@ class SideTracker {
         this.elements.trackerFieldRadius.value = sessionSettings.drillFieldRadiusMeters ?? DEFAULT_FIELD_RADIUS_METERS;
         this.elements.trackerCameraDistance.value = sessionSettings.cameraDistanceMeters ?? '';
         this.elements.trackerCameraMode.value = sessionSettings.cameraMode || 'auto';
+        if (sessionSettings.fieldMarkers && typeof sessionSettings.fieldMarkers === 'object') {
+            this.fieldMarkers = this.normalizeFieldMarkers(sessionSettings.fieldMarkers);
+            this.updateMarkerStatus();
+            this.drawMarkers();
+        }
 
         const enabledCues = Array.isArray(sessionSettings.enabledCues)
             ? this.normalizeCueList(sessionSettings.enabledCues)
@@ -621,7 +820,8 @@ class SideTracker {
             drillType: '4_direction',
             drillFieldRadiusMeters: Number.isFinite(fieldRadius) ? fieldRadius : DEFAULT_FIELD_RADIUS_METERS,
             cameraDistanceMeters: Number.isFinite(cameraDistance) ? cameraDistance : '',
-            cameraMode: this.elements.trackerCameraMode.value || 'auto'
+            cameraMode: this.elements.trackerCameraMode.value || 'auto',
+            fieldMarkers: this.fieldMarkers
         };
 
         this.elements.settingsSaveStatus.textContent = 'Saving...';
@@ -648,6 +848,7 @@ class SideTracker {
             this.isTracking = true;
             this.elements.stopTrackingBtn.disabled = false;
             this.elements.calibrateAngleBtn.disabled = false;
+            this.elements.autoDetectMarkersBtn.disabled = false;
             this.updateStepStatus({ cameraOn: true });
             this.setTrackerState('camera on');
             this.setStatus(this.sessionId ? 'Camera on. Loading pose tracker...' : 'Camera on. Connect session code to record reps.');
@@ -657,6 +858,7 @@ class SideTracker {
             this.setStatus(this.getCameraErrorMessage(error));
             this.elements.startTrackingBtn.disabled = false;
             this.elements.calibrateAngleBtn.disabled = true;
+            this.elements.autoDetectMarkersBtn.disabled = true;
             return;
         }
 
@@ -838,7 +1040,10 @@ class SideTracker {
         const context = this.canvasContext;
         context.clearRect(0, 0, canvas.width, canvas.height);
 
-        if (!landmarks) return;
+        if (!landmarks) {
+            this.drawMarkers();
+            return;
+        }
 
         context.lineWidth = 5;
         context.strokeStyle = '#00ff00';
@@ -861,6 +1066,59 @@ class SideTracker {
             context.arc(point.x * canvas.width, point.y * canvas.height, 5, 0, Math.PI * 2);
             context.fill();
         });
+
+        this.drawMarkers();
+    }
+
+    drawMarkers() {
+        const canvas = this.elements.trackerCanvas;
+        const context = this.canvasContext;
+        if (!canvas.width || !canvas.height) return;
+
+        Object.entries(this.fieldMarkers).forEach(([type, marker]) => {
+            if (!MARKER_TYPES.includes(type) || !Number.isFinite(marker.x) || !Number.isFinite(marker.y)) return;
+            const x = marker.x * canvas.width;
+            const y = marker.y * canvas.height;
+            const active = type === this.selectedMarker;
+
+            context.save();
+            context.lineWidth = active ? 4 : 3;
+            context.strokeStyle = active ? '#ffffff' : '#ffaa00';
+            context.fillStyle = active ? '#00ff00' : '#ffaa00';
+            context.beginPath();
+            context.arc(x, y, active ? 13 : 10, 0, Math.PI * 2);
+            context.stroke();
+            context.beginPath();
+            context.moveTo(x, y - 16);
+            context.lineTo(x + 10, y + 12);
+            context.lineTo(x - 10, y + 12);
+            context.closePath();
+            context.fill();
+            context.fillStyle = '#000';
+            context.font = 'bold 18px Courier New';
+            context.textAlign = 'center';
+            context.fillText((MARKER_LABELS[type] || type).slice(0, 1), x, y + 6);
+            context.restore();
+        });
+    }
+
+    normalizeFieldMarkers(markers) {
+        return Object.fromEntries(Object.entries(markers)
+            .filter(([type, marker]) => {
+                return MARKER_TYPES.includes(type)
+                    && Number.isFinite(Number(marker?.x))
+                    && Number.isFinite(Number(marker?.y));
+            })
+            .map(([type, marker]) => [type, {
+                ...marker,
+                x: Math.max(0, Math.min(1, Number(marker.x))),
+                y: Math.max(0, Math.min(1, Number(marker.y)))
+            }]));
+    }
+
+    updateMarkerStatus() {
+        const count = Object.keys(this.fieldMarkers).length;
+        this.elements.markerSaveStatus.textContent = count ? `${count} markers loaded` : 'Tap video to place';
     }
 
     calculateMetrics(landmarks, runType = 'AUTO') {
@@ -1527,6 +1785,7 @@ class SideTracker {
         this.elements.stopTrackingBtn.disabled = true;
         this.elements.startTrackingBtn.disabled = !this.sessionId;
         this.elements.calibrateAngleBtn.disabled = true;
+        this.elements.autoDetectMarkersBtn.disabled = true;
         this.elements.trackerPlaceholder.style.display = 'flex';
         this.updateStepStatus({ cameraOn: false, cueActive: false });
         this.setTrackerState('connected');
@@ -1538,6 +1797,7 @@ class SideTracker {
 
         this.elements.trackerVideo.srcObject = null;
         this.canvasContext.clearRect(0, 0, this.elements.trackerCanvas.width, this.elements.trackerCanvas.height);
+        this.updateMarkerStatus();
         this.setStatus(this.sessionId ? `Connected to session ${this.sessionCode}.` : 'Waiting for session code.');
     }
 

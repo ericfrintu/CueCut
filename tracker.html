@@ -119,6 +119,25 @@
             </div>
         </section>
 
+        <section class="tracker-panel">
+            <div class="tracker-panel-header">
+                <h2>Cones / Poles</h2>
+                <span id="markerSaveStatus">Tap video to place</span>
+            </div>
+            <div class="marker-controls">
+                <button class="marker-tab active" data-marker="center" type="button">Center</button>
+                <button class="marker-tab" data-marker="forward" type="button">Forward</button>
+                <button class="marker-tab" data-marker="backward" type="button">Backward</button>
+                <button class="marker-tab" data-marker="left" type="button">Left</button>
+                <button class="marker-tab" data-marker="right" type="button">Right</button>
+            </div>
+            <div class="tracker-actions compact-actions">
+                <button id="autoDetectMarkersBtn" class="back-button tracker-test-button" type="button" disabled>Auto Detect Bright Cones</button>
+                <button id="clearMarkersBtn" class="back-button tracker-test-button" type="button">Clear Markers</button>
+            </div>
+            <p id="markerHelp" class="small-text">Start camera, pick a marker, then tap the cone or pole in the video.</p>
+        </section>
+
         <div id="trackerAudioModePopup" class="popup-overlay hidden" aria-hidden="true">
             <div class="popup-panel" role="dialog" aria-modal="true" aria-labelledby="trackerAudioModePopupTitle">
                 <div class="popup-header">
@@ -160,9 +179,9 @@
                 </tbody>
             </table>
         </section>
-        <p class="tracker-version">v20</p>
+        <p class="tracker-version">v21</p>
     </main>
 
-    <script type="module" src="tracker.js?v=20"></script>
+    <script type="module" src="tracker.js?v=21"></script>
 </body>
 </html>

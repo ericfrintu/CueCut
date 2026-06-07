@@ -963,7 +963,8 @@ body {
 }
 
 .tracker-camera canvas {
-    pointer-events: none;
+    pointer-events: auto;
+    cursor: crosshair;
 }
 
 .tracker-placeholder {
@@ -1029,6 +1030,36 @@ body {
     text-transform: none;
 }
 
+.marker-controls {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.marker-tab {
+    min-height: 38px;
+    padding: 7px;
+    border: 1px solid rgba(255, 170, 0, 0.55);
+    border-radius: 4px;
+    background: #050505;
+    color: #ffaa00;
+    font: 700 0.72rem 'Courier New', monospace;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.marker-tab.active,
+.marker-tab:focus {
+    outline: none;
+    background: #ffaa00;
+    color: #000;
+}
+
+.compact-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 10px;
+}
+
 .tracker-metrics th,
 .tracker-metrics td {
     padding: 10px;
@@ -1060,7 +1091,8 @@ body {
     }
 
     .tracker-settings-grid,
-    .tracker-cue-settings {
+    .tracker-cue-settings,
+    .marker-controls {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
