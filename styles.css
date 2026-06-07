@@ -277,6 +277,23 @@ body {
     font-family: 'Courier New', monospace;
 }
 
+.sound-feedback-form {
+    width: 100%;
+    max-width: 500px;
+    padding: 14px;
+    margin: 0 0 20px;
+    border: 1px solid rgba(0, 255, 0, 0.25);
+    background: rgba(0, 255, 0, 0.06);
+}
+
+.sound-feedback-form label {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 8px 0;
+    font-family: 'Courier New', monospace;
+}
+
 .summary-chart {
     width: 100%;
     max-width: 500px;

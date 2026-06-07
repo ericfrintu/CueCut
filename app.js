@@ -10,6 +10,7 @@
 const CUE_BANK = ['FRONT', 'BACK', 'LEFT', 'RIGHT'];
 const DRILL_TYPE = '4_direction';
 const DEFAULT_FIELD_RADIUS_METERS = 15;
+const AUDIO_FEEDBACK_VERSION = 'sound-v1';
 
 class RepData {
     constructor(cue, sessionId) {
@@ -22,6 +23,16 @@ class RepData {
         this.cameraMode = CueCutApp.getCameraModeForCue(cue);
         this.drillFieldRadiusMeters = DEFAULT_FIELD_RADIUS_METERS;
         this.cameraDistanceMeters = '';
+        this.cuePlayedAt = '';
+        this.cuePlayedAtMs = null;
+        this.movementStartedAt = '';
+        this.reactionTimeMs = null;
+        this.soundId = '';
+        this.audioLatencyEstimateMs = '';
+        this.audioMode = 'cue_only';
+        this.audioFeedbackVersion = AUDIO_FEEDBACK_VERSION;
+        this.soundPrint = null;
+        this.soundFeedback = null;
         this.cueStartMs = null;
         this.firstMovementMs = null;
         this.finishMs = null;
@@ -65,6 +76,13 @@ class RepData {
             this.cameraMode || '',
             this.drillFieldRadiusMeters || '',
             this.cameraDistanceMeters || '',
+            this.cuePlayedAt || '',
+            this.movementStartedAt || '',
+            this.reactionTimeMs || '',
+            this.soundId || '',
+            this.audioLatencyEstimateMs || '',
+            this.audioMode || '',
+            this.audioFeedbackVersion || '',
             this.cueStartMs || '',
             this.firstMovementMs || '',
             this.finishMs || '',
@@ -86,7 +104,7 @@ class RepData {
     }
 
     static toCSVHeader() {
-        return 'rep_id,timestamp,cue,drill_type,direction,camera_mode,drill_field_radius_meters,camera_distance_meters,cue_start_ms,first_movement_ms,finish_ms,reaction_ms,movement_ms,total_ms,timing_mode,motion_start_ms,coach_run_type,coach_good,coach_fix,coach_cue,coach_drill,coach_score,coach_confidence,coach_moment,notes';
+        return 'rep_id,timestamp,cue,drill_type,direction,camera_mode,drill_field_radius_meters,camera_distance_meters,cue_played_at,movement_started_at,reaction_time_ms,sound_id,audio_latency_estimate_ms,audio_mode,audio_feedback_version,cue_start_ms,first_movement_ms,finish_ms,reaction_ms,movement_ms,total_ms,timing_mode,motion_start_ms,coach_run_type,coach_good,coach_fix,coach_cue,coach_drill,coach_score,coach_confidence,coach_moment,notes';
     }
 
     static toCSVCell(value) {
@@ -114,6 +132,13 @@ class Settings {
             drillFieldRadiusMeters: DEFAULT_FIELD_RADIUS_METERS,
             cameraDistanceMeters: '',
             cameraMode: 'auto',
+            audioMode: 'cue_only',
+            masterVolume: 0.8,
+            cueVolume: 0.9,
+            feedbackVolume: 0.75,
+            voiceLabelsEnabled: false,
+            soundProfile: 'athlete',
+            liveSonificationSensitivity: 1.0,
             motionDetectionEnabled: false
         };
         this.load();
@@ -246,39 +271,127 @@ class MotionDetector {
 }
 
 // ============================================================================
-// AUDIO FEEDBACK
+// AUDIO FEEDBACK ENGINE
 // ============================================================================
 
-class AudioFeedback {
+class AudioFeedbackEngine {
     constructor(settings) {
         this.settings = settings;
         this.synth = window.speechSynthesis;
         this.isSupported = !!this.synth;
         this.audioContext = null;
+        this.referenceSoundPrint = null;
     }
 
     playCue(cueText) {
-        if (!this.settings.get('audioEnabled')) return;
+        const audioMode = this.getAudioMode();
+        const soundId = `direction_${String(cueText || '').toLowerCase()}_${AUDIO_FEEDBACK_VERSION}`;
+        const cuePlayedAtMs = performance.now();
+        const cuePlayedAt = new Date().toISOString();
+
+        if (!this.isAudioEnabled() || audioMode === 'coach_review') {
+            return this.buildCueMetadata(soundId, cuePlayedAt, cuePlayedAtMs, audioMode, null);
+        }
 
         const pattern = this.getCuePattern(cueText);
-        if (!pattern) return;
+        if (!pattern) return this.buildCueMetadata(soundId, cuePlayedAt, cuePlayedAtMs, audioMode, null);
 
         if (this.synth) {
             this.synth.cancel();
         }
-        this.playTonePattern(pattern);
+        const audioLatencyEstimateMs = this.playTonePattern(pattern, this.getCueVolume());
+
+        if (this.settings.get('voiceLabelsEnabled') && audioMode !== 'minimal') {
+            setTimeout(() => this.playFeedback(String(cueText).toLowerCase(), { allowInCueOnly: true }), 90);
+        }
+
+        return this.buildCueMetadata(soundId, cuePlayedAt, cuePlayedAtMs, audioMode, audioLatencyEstimateMs);
     }
 
-    playFeedback(text) {
-        if (!this.settings.get('audioEnabled') || !this.isSupported) return;
+    buildCueMetadata(soundId, cuePlayedAt, cuePlayedAtMs, audioMode, audioLatencyEstimateMs) {
+        return {
+            soundId,
+            cuePlayedAt,
+            cuePlayedAtMs,
+            audioLatencyEstimateMs,
+            audioMode,
+            audioFeedbackVersion: AUDIO_FEEDBACK_VERSION
+        };
+    }
+
+    playFeedback(text, options = {}) {
+        const audioMode = this.getAudioMode();
+        if (!this.isAudioEnabled() || !this.isSupported) return;
+        if (!options.allowInCueOnly && ['cue_only', 'minimal'].includes(audioMode)) return;
 
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1.0;
+        utterance.rate = this.settings.get('speechRate') || 1.0;
         utterance.pitch = 1.0;
-        utterance.volume = 0.8;
+        utterance.volume = this.getFeedbackVolume();
 
         this.synth.cancel();
         this.synth.speak(utterance);
+    }
+
+    playResultSound(resultType = 'neutral') {
+        if (!this.isAudioEnabled()) return;
+        if (['cue_only', 'reference'].includes(this.getAudioMode())) return;
+
+        const patterns = {
+            best: [
+                { frequency: 880, duration: 0.1, pan: 0 },
+                { frequency: 1320, duration: 0.16, pan: 0, delay: 0.11 }
+            ],
+            good: [{ frequency: 940, duration: 0.14, pan: 0 }],
+            neutral: [{ frequency: 620, duration: 0.12, pan: 0 }],
+            low_quality: [{ frequency: 260, duration: 0.18, pan: 0 }],
+            error: [
+                { frequency: 260, duration: 0.1, pan: 0 },
+                { frequency: 180, duration: 0.16, pan: 0, delay: 0.12 }
+            ]
+        };
+
+        this.playTonePattern(patterns[resultType] || patterns.neutral, this.getFeedbackVolume());
+    }
+
+    playQualityWarning(reason = 'low_confidence') {
+        if (!this.isAudioEnabled()) return;
+        if (!['live_sonification', 'coach_review', 'compare'].includes(this.getAudioMode())) return;
+        const frequency = reason === 'low_confidence' ? 210 : 300;
+        this.playTonePattern([{ frequency, duration: 0.08, pan: 0 }], Math.min(0.25, this.getFeedbackVolume()));
+    }
+
+    playSoundPrint(soundPrint) {
+        if (!this.isAudioEnabled() || !soundPrint) return;
+        if (!['coach_review', 'reference', 'compare'].includes(this.getAudioMode())) return;
+
+        const curve = soundPrint.accelerationPitchCurve || [];
+        const confidence = soundPrint.poseConfidenceOverTime || [];
+        const pattern = curve.slice(0, 8).map((point, index) => ({
+            frequency: Math.max(220, Math.min(1320, point.pitch || 440)),
+            duration: 0.07,
+            pan: 0,
+            delay: index * 0.08,
+            gainScale: Math.max(0.15, Math.min(1, confidence[index]?.confidence ?? 0.7))
+        }));
+
+        this.playTonePattern(pattern.length ? pattern : [{ frequency: 440, duration: 0.12, pan: 0 }], this.getFeedbackVolume());
+    }
+
+    saveReferenceSound(soundPrint) {
+        if (!soundPrint) return;
+        this.referenceSoundPrint = soundPrint;
+        localStorage.setItem('cuecut_reference_sound_print', JSON.stringify(soundPrint));
+    }
+
+    loadReferenceSound() {
+        if (this.referenceSoundPrint) return this.referenceSoundPrint;
+        try {
+            this.referenceSoundPrint = JSON.parse(localStorage.getItem('cuecut_reference_sound_print') || 'null');
+        } catch (error) {
+            this.referenceSoundPrint = null;
+        }
+        return this.referenceSoundPrint;
     }
 
     stop() {
@@ -315,17 +428,19 @@ class AudioFeedback {
         return patterns[cueText] || null;
     }
 
-    playTonePattern(pattern) {
+    playTonePattern(pattern, volume = 0.8) {
         const context = this.getAudioContext();
-        if (!context) return;
+        if (!context) return null;
 
         pattern.forEach(tone => {
             const startTime = context.currentTime + (tone.delay || 0);
-            this.playTone(context, tone.frequency, tone.duration, tone.pan, startTime);
+            this.playTone(context, tone.frequency, tone.duration, tone.pan, startTime, volume * (tone.gainScale || 1));
         });
+
+        return context.baseLatency ? Math.round(context.baseLatency * 1000) : null;
     }
 
-    playTone(context, frequency, duration, pan, startTime) {
+    playTone(context, frequency, duration, pan, startTime, volume = 0.8) {
         const oscillator = context.createOscillator();
         const gainNode = context.createGain();
         const panner = typeof context.createStereoPanner === 'function'
@@ -336,7 +451,7 @@ class AudioFeedback {
         oscillator.frequency.setValueAtTime(frequency, startTime);
 
         gainNode.gain.setValueAtTime(0.0001, startTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.35, startTime + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(Math.max(0.001, Math.min(0.45, 0.35 * volume)), startTime + 0.01);
         gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
 
         if (panner) {
@@ -351,6 +466,28 @@ class AudioFeedback {
 
         oscillator.start(startTime);
         oscillator.stop(startTime + duration + 0.03);
+    }
+
+    isAudioEnabled() {
+        return this.settings.get('audioEnabled') && this.getAudioMode() !== 'off';
+    }
+
+    getAudioMode() {
+        return this.settings.get('audioMode') || (this.settings.get('audioEnabled') ? 'cue_only' : 'off');
+    }
+
+    getMasterVolume() {
+        return Number.isFinite(this.settings.get('masterVolume')) ? this.settings.get('masterVolume') : 0.8;
+    }
+
+    getCueVolume() {
+        const cueVolume = Number.isFinite(this.settings.get('cueVolume')) ? this.settings.get('cueVolume') : 0.9;
+        return cueVolume * this.getMasterVolume();
+    }
+
+    getFeedbackVolume() {
+        const feedbackVolume = Number.isFinite(this.settings.get('feedbackVolume')) ? this.settings.get('feedbackVolume') : 0.75;
+        return feedbackVolume * this.getMasterVolume();
     }
 }
 
@@ -582,7 +719,7 @@ class CueCutApp {
         this.settings = new Settings();
         this.storage = new DataStorage();
         this.cloud = new CloudStorage();
-        this.audio = new AudioFeedback(this.settings);
+        this.audio = new AudioFeedbackEngine(this.settings);
         this.motionDetector = new MotionDetector();
 
         this.currentRepData = null;
@@ -628,12 +765,15 @@ class CueCutApp {
         document.getElementById('reactionFinishedBtn').addEventListener('click', () => this.finishReaction());
 
         // Feedback Screen
+        document.getElementById('saveReferenceSoundBtn').addEventListener('click', () => this.saveCurrentRepReferenceSound());
+        document.getElementById('playRepSoundBtn').addEventListener('click', () => this.playCurrentRepSound());
         document.getElementById('nextRepBtn').addEventListener('click', () => this.goToReady());
         document.getElementById('endSessionBtn').addEventListener('click', () => this.endSession());
 
         // Summary Screen
         document.getElementById('exportDataBtn').addEventListener('click', () => this.exportCurrentSessionData());
         document.getElementById('summaryHomeBtn').addEventListener('click', () => this.goToHome());
+        document.getElementById('saveSoundFeedbackBtn').addEventListener('click', () => this.saveSessionSoundFeedback());
 
         // Data View Screen
         document.getElementById('dataViewExportBtn').addEventListener('click', () => this.exportCurrentDataView());
@@ -658,6 +798,34 @@ class CueCutApp {
         document.getElementById('audioToggle').value = this.settings.get('audioEnabled') ? 'on' : 'off';
         document.getElementById('audioToggle').addEventListener('change', (e) => {
             this.settings.set('audioEnabled', e.target.value === 'on');
+        });
+
+        document.getElementById('audioModeSelect').value = this.settings.get('audioMode');
+        document.getElementById('audioModeSelect').addEventListener('change', (e) => {
+            this.settings.set('audioMode', e.target.value);
+        });
+
+        ['masterVolume', 'cueVolume', 'feedbackVolume'].forEach(id => {
+            const element = document.getElementById(id);
+            element.value = this.settings.get(id);
+            element.addEventListener('change', (e) => {
+                this.settings.set(id, Math.max(0, Math.min(1, parseFloat(e.target.value))));
+            });
+        });
+
+        document.getElementById('voiceLabelsToggle').value = this.settings.get('voiceLabelsEnabled') ? 'on' : 'off';
+        document.getElementById('voiceLabelsToggle').addEventListener('change', (e) => {
+            this.settings.set('voiceLabelsEnabled', e.target.value === 'on');
+        });
+
+        document.getElementById('soundProfileSelect').value = this.settings.get('soundProfile');
+        document.getElementById('soundProfileSelect').addEventListener('change', (e) => {
+            this.settings.set('soundProfile', e.target.value);
+        });
+
+        document.getElementById('sonificationSensitivity').value = this.settings.get('liveSonificationSensitivity');
+        document.getElementById('sonificationSensitivity').addEventListener('change', (e) => {
+            this.settings.set('liveSonificationSensitivity', parseFloat(e.target.value));
         });
 
         document.getElementById('timingModeSelect').value = this.settings.get('timingMode');
@@ -854,7 +1022,15 @@ class CueCutApp {
             drillType: DRILL_TYPE,
             drillFieldRadiusMeters: this.settings.get('drillFieldRadiusMeters'),
             cameraDistanceMeters: this.settings.get('cameraDistanceMeters'),
-            cameraMode: this.settings.get('cameraMode')
+            cameraMode: this.settings.get('cameraMode'),
+            audioMode: this.settings.get('audioMode'),
+            masterVolume: this.settings.get('masterVolume'),
+            cueVolume: this.settings.get('cueVolume'),
+            feedbackVolume: this.settings.get('feedbackVolume'),
+            voiceLabelsEnabled: this.settings.get('voiceLabelsEnabled'),
+            soundProfile: this.settings.get('soundProfile'),
+            liveSonificationSensitivity: this.settings.get('liveSonificationSensitivity'),
+            audioFeedbackVersion: AUDIO_FEEDBACK_VERSION
         };
     }
 
@@ -926,6 +1102,13 @@ class CueCutApp {
         if (Number.isFinite(sessionSettings.drillFieldRadiusMeters)) cleaned.drillFieldRadiusMeters = sessionSettings.drillFieldRadiusMeters;
         if (sessionSettings.cameraDistanceMeters !== undefined) cleaned.cameraDistanceMeters = sessionSettings.cameraDistanceMeters;
         if (['auto', 'front_view', 'side_view'].includes(sessionSettings.cameraMode)) cleaned.cameraMode = sessionSettings.cameraMode;
+        if (['off', 'cue_only', 'live_sonification', 'coach_review', 'reference', 'compare', 'minimal'].includes(sessionSettings.audioMode)) cleaned.audioMode = sessionSettings.audioMode;
+        if (Number.isFinite(sessionSettings.masterVolume)) cleaned.masterVolume = sessionSettings.masterVolume;
+        if (Number.isFinite(sessionSettings.cueVolume)) cleaned.cueVolume = sessionSettings.cueVolume;
+        if (Number.isFinite(sessionSettings.feedbackVolume)) cleaned.feedbackVolume = sessionSettings.feedbackVolume;
+        if (typeof sessionSettings.voiceLabelsEnabled === 'boolean') cleaned.voiceLabelsEnabled = sessionSettings.voiceLabelsEnabled;
+        if (['athlete', 'coach', 'minimal'].includes(sessionSettings.soundProfile)) cleaned.soundProfile = sessionSettings.soundProfile;
+        if (Number.isFinite(sessionSettings.liveSonificationSensitivity)) cleaned.liveSonificationSensitivity = sessionSettings.liveSonificationSensitivity;
         if (Array.isArray(sessionSettings.enabledCues)) {
             const validCues = sessionSettings.enabledCues.filter(cue => CUE_BANK.includes(cue));
             if (validCues.length > 0) cleaned.enabledCues = validCues;
@@ -980,9 +1163,16 @@ class CueCutApp {
     }
 
     showCue() {
-        this.currentRepData.cueStartMs = performance.now();
         this.currentCoachFeedback = null;
         this.lastCoachFeedbackKey = null;
+        const cueAudio = this.audio.playCue(this.currentRepData.cue);
+        this.currentRepData.cueStartMs = cueAudio?.cuePlayedAtMs || performance.now();
+        this.currentRepData.cuePlayedAtMs = this.currentRepData.cueStartMs;
+        this.currentRepData.cuePlayedAt = cueAudio?.cuePlayedAt || new Date().toISOString();
+        this.currentRepData.soundId = cueAudio?.soundId || '';
+        this.currentRepData.audioLatencyEstimateMs = cueAudio?.audioLatencyEstimateMs ?? '';
+        this.currentRepData.audioMode = cueAudio?.audioMode || this.settings.get('audioMode');
+        this.currentRepData.audioFeedbackVersion = cueAudio?.audioFeedbackVersion || AUDIO_FEEDBACK_VERSION;
         this.cloud.updateActiveRep(this.currentSessionId, {
             repId: this.currentRepData.id,
             cue: this.currentRepData.cue,
@@ -991,6 +1181,10 @@ class CueCutApp {
             cameraMode: this.currentRepData.cameraMode,
             drillFieldRadiusMeters: this.currentRepData.drillFieldRadiusMeters,
             cameraDistanceMeters: this.currentRepData.cameraDistanceMeters,
+            cuePlayedAt: this.currentRepData.cuePlayedAt,
+            soundId: this.currentRepData.soundId,
+            audioMode: this.currentRepData.audioMode,
+            audioFeedbackVersion: this.currentRepData.audioFeedbackVersion,
             sessionCode: this.currentSessionCode,
             status: 'active',
             cueStartedAt: new Date().toISOString()
@@ -1000,14 +1194,12 @@ class CueCutApp {
         document.getElementById('cueDisplay').textContent = this.currentRepData.cue;
         document.getElementById('cueSubtext').textContent = 'MOVE!';
         
-        // Play audio
-        this.audio.playCue(this.currentRepData.cue);
-
         // Start motion detection if enabled
         if (this.settings.get('timingMode') === 'motion' && this.motionDetector.isAvailable === 'available') {
             this.motionDetector.onMotionDetected = (detectedTime) => {
                 this.currentRepData.motionStartMs = detectedTime - this.currentRepData.cueStartMs;
                 this.currentRepData.firstMovementMs = detectedTime;
+                this.currentRepData.movementStartedAt = new Date().toISOString();
                 this.updateMovementDisplay();
             };
             this.motionDetector.start();
@@ -1038,7 +1230,9 @@ class CueCutApp {
 
         // Record reaction time as now - when cue started
         this.currentRepData.firstMovementMs = performance.now();
+        this.currentRepData.movementStartedAt = new Date().toISOString();
         this.currentRepData.calculateTimings();
+        this.currentRepData.reactionTimeMs = this.currentRepData.reactionMs;
 
         this.currentFeedbackScoreNote = this.getScoreNoteForRep(this.currentRepData);
         this.storage.saveRep(this.currentRepData);
@@ -1057,6 +1251,7 @@ class CueCutApp {
 
         const reactionSec = (this.currentRepData.reactionMs / 1000).toFixed(2);
         this.audio.playFeedback(`Reaction ${reactionSec} seconds.`);
+        this.audio.playResultSound(this.getResultSoundType(this.currentRepData));
 
         if (this.isSessionGoalReached()) {
             this.endSession();
@@ -1145,6 +1340,7 @@ class CueCutApp {
         targetRep.coachConfidence = latestFeedback.feedback.confidence || '';
         targetRep.coachStrengths = latestFeedback.feedback.strengths || [];
         targetRep.coachFixes = latestFeedback.feedback.fixes || [];
+        targetRep.soundPrint = latestFeedback.soundPrint || targetRep.soundPrint || null;
         const topIssue = latestFeedback.feedback.issues?.[0];
         targetRep.coachMoment = topIssue?.moment || '';
         this.storage.saveRep(targetRep);
@@ -1163,6 +1359,39 @@ class CueCutApp {
             feedback.cue || '',
             feedback.fix || feedback.message || ''
         ].join('|');
+    }
+
+    saveCurrentRepReferenceSound() {
+        if (!this.currentRepData?.soundPrint) {
+            this.audio.playResultSound('low_quality');
+            return;
+        }
+
+        this.audio.saveReferenceSound(this.currentRepData.soundPrint);
+        this.currentRepData.soundPrint.referenceSavedAt = new Date().toISOString();
+        this.storage.saveRep(this.currentRepData);
+        this.audio.playResultSound('good');
+    }
+
+    playCurrentRepSound() {
+        const soundPrint = this.currentRepData?.soundPrint || this.audio.loadReferenceSound();
+        if (!soundPrint) {
+            this.audio.playResultSound('low_quality');
+            return;
+        }
+        this.audio.playSoundPrint(soundPrint);
+    }
+
+    saveSessionSoundFeedback() {
+        const sessionId = this.currentSummarySessionId || this.currentSessionId;
+        const feedback = {
+            helpful: document.getElementById('soundHelpfulSelect')?.value || '',
+            distracting: document.getElementById('soundDistractingSelect')?.value || '',
+            bestUse: document.getElementById('soundUseSelect')?.value || '',
+            savedAt: new Date().toISOString()
+        };
+        localStorage.setItem(`cuecut_sound_feedback_${sessionId}`, JSON.stringify(feedback));
+        this.audio.playResultSound('good');
     }
 
     updateTrackerSyncStatus(trackerState) {
@@ -1230,6 +1459,16 @@ class CueCutApp {
         }
 
         return `+${(deltaMs / 1000).toFixed(2)}s from ${rep.cue} best`;
+    }
+
+    getResultSoundType(rep) {
+        if (!Number.isFinite(rep.reactionMs)) return 'low_quality';
+        const previousBest = this.getBestReactionForCue(rep.cue);
+        if (!Number.isFinite(previousBest) || rep.reactionMs <= previousBest) return 'best';
+        if (rep.coachConfidence === 'low' || Number(rep.coachScore) === 0) return 'low_quality';
+        const deltaMs = rep.reactionMs - previousBest;
+        if (deltaMs < 250) return 'good';
+        return 'neutral';
     }
 
     getBestReactionForCue(cue) {

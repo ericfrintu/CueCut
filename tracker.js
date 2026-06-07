@@ -140,6 +140,7 @@ class SideTracker {
             trackerDelayMin: document.getElementById('trackerDelayMin'),
             trackerDelayMax: document.getElementById('trackerDelayMax'),
             trackerAudioSelect: document.getElementById('trackerAudioSelect'),
+            trackerAudioMode: document.getElementById('trackerAudioMode'),
             trackerFieldRadius: document.getElementById('trackerFieldRadius'),
             trackerCameraDistance: document.getElementById('trackerCameraDistance'),
             trackerCameraMode: document.getElementById('trackerCameraMode'),
@@ -173,6 +174,7 @@ class SideTracker {
             this.elements.trackerDelayMin,
             this.elements.trackerDelayMax,
             this.elements.trackerAudioSelect,
+            this.elements.trackerAudioMode,
             this.elements.trackerFieldRadius,
             this.elements.trackerCameraDistance,
             this.elements.trackerCameraMode,
@@ -456,6 +458,7 @@ class SideTracker {
         this.elements.trackerDelayMin.value = sessionSettings.delayMin ?? 1.0;
         this.elements.trackerDelayMax.value = sessionSettings.delayMax ?? 3.0;
         this.elements.trackerAudioSelect.value = sessionSettings.audioEnabled === false ? 'off' : 'on';
+        this.elements.trackerAudioMode.value = sessionSettings.audioMode || 'cue_only';
         this.elements.trackerFieldRadius.value = sessionSettings.drillFieldRadiusMeters ?? DEFAULT_FIELD_RADIUS_METERS;
         this.elements.trackerCameraDistance.value = sessionSettings.cameraDistanceMeters ?? '';
         this.elements.trackerCameraMode.value = sessionSettings.cameraMode || 'auto';
@@ -484,6 +487,7 @@ class SideTracker {
         const cameraDistance = parseFloat(this.elements.trackerCameraDistance.value);
         const sessionSettings = {
             audioEnabled: this.elements.trackerAudioSelect.value === 'on',
+            audioMode: this.elements.trackerAudioMode.value || 'cue_only',
             timingMode: 'manual',
             speechRate: 1.0,
             sessionGoalReps: parseInt(this.elements.trackerGoalSelect.value, 10),
@@ -1108,6 +1112,7 @@ class SideTracker {
             const summary = {
                 runType: rep.cue,
                 metrics: null,
+                soundPrint: this.buildSoundPrint(rep, []),
                 feedback: {
                     good: 'camera connected',
                     fix: 'keep torso and one full leg visible',
@@ -1139,6 +1144,7 @@ class SideTracker {
         }
 
         const summary = this.buildRepFeedbackSummary(rep, samples);
+        summary.soundPrint = this.buildSoundPrint(rep, samples);
         const capturedCount = samples.length;
         this.showFinalCoachFeedback(summary);
         this.updateCaptureBadge(capturedCount, `Saved ${capturedCount} samples`);
@@ -1159,6 +1165,7 @@ class SideTracker {
                     cameraDistanceMeters: rep.cameraDistanceMeters ?? '',
                     runType: summary.runType,
                     metrics: summary.metrics,
+                    soundPrint: summary.soundPrint,
                     feedback: summary.feedback,
                     source: 'side-tracker',
                     updatedAt: serverTimestamp()
@@ -1277,6 +1284,73 @@ class SideTracker {
                 })),
                 runType
             }
+        };
+    }
+
+    buildSoundPrint(rep, samples) {
+        if (!samples.length) {
+            return {
+                audioFeedbackVersion: 'sound-v1',
+                direction: rep.direction || String(rep.cue || '').toLowerCase(),
+                confidence: 'low',
+                accelerationPitchCurve: [],
+                velocityOrSpeedCurve: [],
+                phaseTimingMarkers: [{ phase: 'finish', sampleMs: null }],
+                peakAccelerationTime: null,
+                brakingStartTime: null,
+                movementQualityEvents: ['no clean pose samples'],
+                poseConfidenceOverTime: []
+            };
+        }
+
+        const normalized = samples.map((sample, index) => {
+            const previous = samples[Math.max(0, index - 1)];
+            const dt = Math.max(0.25, ((sample.sampleMs || index * 250) - (previous.sampleMs || (index - 1) * 250)) / 1000);
+            const hipDelta = previous.metrics ? previous.metrics.hipHeightPct - sample.metrics.hipHeightPct : 0;
+            const reachDelta = previous.metrics ? sample.metrics.footReachPct - previous.metrics.footReachPct : 0;
+            const relativeAcceleration = (hipDelta + reachDelta * 0.15) / dt;
+            const pitch = 440 + Math.max(-180, Math.min(420, relativeAcceleration * 18));
+            return {
+                sampleMs: sample.sampleMs ?? index * 250,
+                relativeAcceleration,
+                pitch,
+                confidence: sample.metrics.poseScore || 0,
+                quality: sample.feedback.confidence || 'medium'
+            };
+        });
+
+        const peak = normalized.reduce((best, point) => point.relativeAcceleration > best.relativeAcceleration ? point : best, normalized[0]);
+        const braking = normalized.find(point => point.relativeAcceleration < -2.5);
+        const lowConfidenceCount = normalized.filter(point => point.confidence < 0.35).length;
+
+        return {
+            audioFeedbackVersion: 'sound-v1',
+            direction: rep.direction || String(rep.cue || '').toLowerCase(),
+            confidence: lowConfidenceCount > normalized.length / 2 ? 'low' : 'usable',
+            accelerationPitchCurve: normalized.map(point => ({ sampleMs: point.sampleMs, pitch: Math.round(point.pitch) })),
+            velocityOrSpeedCurve: normalized.map(point => ({
+                sampleMs: point.sampleMs,
+                relativeSpeed: Math.round(Math.abs(point.relativeAcceleration) * 10) / 10
+            })),
+            phaseTimingMarkers: [
+                { phase: 'ready', sampleMs: 0 },
+                { phase: 'cue', sampleMs: 0 },
+                { phase: 'reaction', sampleMs: normalized[0]?.sampleMs || 0 },
+                { phase: 'first_step', sampleMs: normalized[Math.min(1, normalized.length - 1)]?.sampleMs || 0 },
+                { phase: 'drive_acceleration', sampleMs: peak.sampleMs },
+                { phase: 'braking_cutting', sampleMs: braking?.sampleMs ?? null },
+                { phase: 'finish', sampleMs: normalized[normalized.length - 1]?.sampleMs || null }
+            ],
+            peakAccelerationTime: peak.sampleMs,
+            brakingStartTime: braking?.sampleMs ?? null,
+            movementQualityEvents: [
+                ...(lowConfidenceCount ? ['low pose confidence during parts of rep'] : []),
+                ...(braking ? ['detected relative braking/deceleration'] : [])
+            ],
+            poseConfidenceOverTime: normalized.map(point => ({
+                sampleMs: point.sampleMs,
+                confidence: Math.round(point.confidence * 100) / 100
+            }))
         };
     }
 
