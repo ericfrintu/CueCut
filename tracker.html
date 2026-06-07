@@ -92,6 +92,7 @@
                         <option value="off">Off</option>
                     </select>
                     <span id="trackerAudioModeInfo" class="tracker-setting-info">Cue Only: short direction sounds for reaction timing.</span>
+                    <button id="trackerAudioModeInfoBtn" class="info-button tracker-info-button" type="button">Mode Info</button>
                 </label>
                 <label>
                     Field Radius (m)
@@ -117,6 +118,16 @@
                 <label><input type="checkbox" class="trackerCueToggle" value="RIGHT" checked> Right</label>
             </div>
         </section>
+
+        <div id="trackerAudioModePopup" class="popup-overlay hidden" aria-hidden="true">
+            <div class="popup-panel" role="dialog" aria-modal="true" aria-labelledby="trackerAudioModePopupTitle">
+                <div class="popup-header">
+                    <h2 id="trackerAudioModePopupTitle">Sound Mode Info</h2>
+                    <button id="closeTrackerAudioModeInfoBtn" class="icon-button" type="button" aria-label="Close sound mode info">X</button>
+                </div>
+                <div id="trackerAudioModePopupContent" class="sound-mode-info-list"></div>
+            </div>
+        </div>
 
         <section class="tracker-camera">
             <video id="trackerVideo" playsinline muted></video>
@@ -149,9 +160,9 @@
                 </tbody>
             </table>
         </section>
-        <p class="tracker-version">v19</p>
+        <p class="tracker-version">v20</p>
     </main>
 
-    <script type="module" src="tracker.js?v=19"></script>
+    <script type="module" src="tracker.js?v=20"></script>
 </body>
 </html>

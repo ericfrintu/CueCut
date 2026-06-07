@@ -812,11 +812,7 @@ class CueCutApp {
         document.getElementById('audioModeSelect').value = this.settings.get('audioMode');
         document.getElementById('audioModeSelect').addEventListener('change', (e) => {
             this.settings.set('audioMode', e.target.value);
-            this.updateAudioModeInfo(e.target.value);
-            this.renderAudioModePopup(e.target.value);
         });
-        this.updateAudioModeInfo(this.settings.get('audioMode'));
-        this.bindAudioModePopup();
 
         ['masterVolume', 'cueVolume', 'feedbackVolume'].forEach(id => {
             const element = document.getElementById(id);
@@ -891,118 +887,6 @@ class CueCutApp {
         document.getElementById('settingsBackBtn').addEventListener('click', () => this.goToHome());
     }
 
-    updateAudioModeInfo(mode) {
-        const infoEl = document.getElementById('audioModeInfo');
-        if (!infoEl) return;
-
-        const info = this.getAudioModeDetails()[mode] || this.getAudioModeDetails().cue_only;
-        infoEl.textContent = info.short;
-    }
-
-    getAudioModeDetails() {
-        return {
-            off: {
-                title: 'Off',
-                short: 'Off: no cue sounds, result tones, voice, or sound-print playback.',
-                purpose: 'Use this when you only want visual cues and silent timing.',
-                bestFor: 'Quiet testing, classrooms, or when the glasses volume is distracting.',
-                hears: 'Nothing from the app.'
-            },
-            cue_only: {
-                title: 'Cue Only',
-                short: 'Cue Only: short direction sounds for fast reaction timing. Best default for testing.',
-                purpose: 'Gives the athlete one clean sound cue so they can react without reading the screen.',
-                bestFor: 'Most normal reps, especially when you care about reaction time.',
-                hears: 'Forward, backward, left, and right cues with simple tones.'
-            },
-            live_sonification: {
-                title: 'Live Sonification',
-                short: 'Live Sonification: pose samples shape sound during movement. Use only when tracking is confident.',
-                purpose: 'Turns body-position data into sound so movement quality can be heard while the rep happens.',
-                bestFor: 'Advanced testing when the camera angle is good and pose tracking is stable.',
-                hears: 'Subtle live tones that change with the tracked movement.'
-            },
-            coach_review: {
-                title: 'Coach Review',
-                short: 'Coach Review: keeps live sound quiet and saves sound prints after reps.',
-                purpose: 'Keeps the rep clean while still letting the coach review feedback and sound prints afterward.',
-                bestFor: 'Team testing, coach-led sessions, or when you do not want extra sounds during the run.',
-                hears: 'Minimal live sound; feedback is mainly after the rep.'
-            },
-            reference: {
-                title: 'Reference Sound',
-                short: 'Reference Sound: replay a good rep sound before trying again.',
-                purpose: 'Lets the athlete hear what a cleaner or faster rep should sound like before the next attempt.',
-                bestFor: 'Practice after you already have a good rep saved.',
-                hears: 'A saved reference pattern from a strong rep.'
-            },
-            compare: {
-                title: 'Compare Mode',
-                short: 'Compare Mode: listen for timing differences between current, best, or reference reps.',
-                purpose: 'Helps compare reps by sound so small timing differences are easier to notice.',
-                bestFor: 'Reviewing consistency, comparing left vs right, or chasing a best rep.',
-                hears: 'Comparison tones or sound prints from different reps.'
-            },
-            minimal: {
-                title: 'Minimal',
-                short: 'Minimal: keeps sounds short and quiet so the athlete is not distracted.',
-                purpose: 'Keeps audio useful but low-distraction.',
-                bestFor: 'Glasses use, busy environments, or athletes who do not want much sound.',
-                hears: 'Short, quiet cue sounds with less extra feedback.'
-            }
-        };
-    }
-
-    bindAudioModePopup() {
-        const infoButton = document.getElementById('audioModeInfoBtn');
-        const closeButton = document.getElementById('closeAudioModeInfoBtn');
-        const popup = document.getElementById('audioModePopup');
-        if (!infoButton || !closeButton || !popup || infoButton.dataset.bound === 'true') return;
-
-        infoButton.dataset.bound = 'true';
-        infoButton.addEventListener('click', () => this.openAudioModePopup());
-        closeButton.addEventListener('click', () => this.closeAudioModePopup());
-        popup.addEventListener('click', (event) => {
-            if (event.target === popup) this.closeAudioModePopup();
-        });
-    }
-
-    openAudioModePopup() {
-        const popup = document.getElementById('audioModePopup');
-        const closeButton = document.getElementById('closeAudioModeInfoBtn');
-        if (!popup) return;
-
-        this.renderAudioModePopup(this.settings.get('audioMode'));
-        popup.classList.remove('hidden');
-        popup.setAttribute('aria-hidden', 'false');
-        if (closeButton) closeButton.focus();
-    }
-
-    closeAudioModePopup() {
-        const popup = document.getElementById('audioModePopup');
-        const infoButton = document.getElementById('audioModeInfoBtn');
-        if (!popup) return;
-
-        popup.classList.add('hidden');
-        popup.setAttribute('aria-hidden', 'true');
-        if (infoButton) infoButton.focus();
-    }
-
-    renderAudioModePopup(activeMode) {
-        const container = document.getElementById('audioModePopupContent');
-        if (!container) return;
-
-        const details = this.getAudioModeDetails();
-        container.innerHTML = Object.entries(details).map(([mode, info]) => `
-            <article class="sound-mode-card ${mode === activeMode ? 'active' : ''}">
-                <h3>${info.title}</h3>
-                <p><strong>Purpose:</strong> ${info.purpose}</p>
-                <p><strong>Use for:</strong> ${info.bestFor}</p>
-                <p><strong>You hear:</strong> ${info.hears}</p>
-            </article>
-        `).join('');
-    }
-
     loadSettings() {
         const enabledCues = this.settings.get('enabledCues') || [];
         const migratedCues = enabledCues.map(cue => cue === 'GO' ? 'FRONT' : cue === 'DROP' ? 'BACK' : cue);
@@ -1041,12 +925,6 @@ class CueCutApp {
     handleKeyboard(event) {
         // Global navigation
         if (event.key === 'Escape' || event.key === 'Backspace') {
-            const popup = document.getElementById('audioModePopup');
-            if (popup && !popup.classList.contains('hidden')) {
-                this.closeAudioModePopup();
-                return;
-            }
-
             if (this.currentScreen === 'settingsScreen') {
                 this.goToHome();
             } else if (this.currentScreen === 'dataViewScreen') {

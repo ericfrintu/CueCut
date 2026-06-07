@@ -155,6 +155,10 @@ class SideTracker {
             trackerAudioSelect: document.getElementById('trackerAudioSelect'),
             trackerAudioMode: document.getElementById('trackerAudioMode'),
             trackerAudioModeInfo: document.getElementById('trackerAudioModeInfo'),
+            trackerAudioModeInfoBtn: document.getElementById('trackerAudioModeInfoBtn'),
+            trackerAudioModePopup: document.getElementById('trackerAudioModePopup'),
+            closeTrackerAudioModeInfoBtn: document.getElementById('closeTrackerAudioModeInfoBtn'),
+            trackerAudioModePopupContent: document.getElementById('trackerAudioModePopupContent'),
             trackerFieldRadius: document.getElementById('trackerFieldRadius'),
             trackerCameraDistance: document.getElementById('trackerCameraDistance'),
             trackerCameraMode: document.getElementById('trackerCameraMode'),
@@ -165,6 +169,7 @@ class SideTracker {
         this.canvasContext = this.elements.trackerCanvas.getContext('2d');
         this.bindEvents();
         this.updateAudioModeInfo(this.elements.trackerAudioMode.value);
+        this.renderAudioModePopup(this.elements.trackerAudioMode.value);
         this.updateCameraGuide();
         this.setStatus('Start camera or enter the 4-digit code from the glasses.');
     }
@@ -186,6 +191,17 @@ class SideTracker {
         });
         this.elements.trackerAudioMode.addEventListener('change', () => {
             this.updateAudioModeInfo(this.elements.trackerAudioMode.value);
+            this.renderAudioModePopup(this.elements.trackerAudioMode.value);
+        });
+        this.elements.trackerAudioModeInfoBtn.addEventListener('click', () => this.openAudioModePopup());
+        this.elements.closeTrackerAudioModeInfoBtn.addEventListener('click', () => this.closeAudioModePopup());
+        this.elements.trackerAudioModePopup.addEventListener('click', (event) => {
+            if (event.target === this.elements.trackerAudioModePopup) this.closeAudioModePopup();
+        });
+        document.addEventListener('keydown', (event) => {
+            if ((event.key === 'Escape' || event.key === 'Backspace') && !this.elements.trackerAudioModePopup.classList.contains('hidden')) {
+                this.closeAudioModePopup();
+            }
         });
         [
             this.elements.trackerGoalSelect,
@@ -385,16 +401,88 @@ class SideTracker {
 
     updateAudioModeInfo(mode) {
         if (!this.elements.trackerAudioModeInfo) return;
-        const descriptions = {
-            off: 'Off: no sounds.',
-            cue_only: 'Cue Only: direction sounds only, best for normal reaction testing.',
-            live_sonification: 'Live Sonification: pose tracking shapes the sound while the athlete moves.',
-            coach_review: 'Coach Review: keeps live sound quiet and saves sound prints for after reps.',
-            reference: 'Reference: replay a good rep sound before the next try.',
-            compare: 'Compare: listen for timing differences between reps.',
-            minimal: 'Minimal: short quiet sounds with fewer distractions.'
+        const info = this.getAudioModeDetails()[mode] || this.getAudioModeDetails().cue_only;
+        this.elements.trackerAudioModeInfo.textContent = info.short;
+    }
+
+    getAudioModeDetails() {
+        return {
+            off: {
+                title: 'Off',
+                short: 'Off: no sounds.',
+                purpose: 'Use this when the athlete only needs visual cues and silent timing.',
+                bestFor: 'Quiet testing, classroom demos, or sessions where the glasses audio is distracting.',
+                hears: 'Nothing from the app.'
+            },
+            cue_only: {
+                title: 'Cue Only',
+                short: 'Cue Only: direction sounds only, best for normal reaction testing.',
+                purpose: 'Gives one clean sound cue so the athlete reacts fast without needing to read the display.',
+                bestFor: 'Default team testing, timing-focused reps, and most glasses sessions.',
+                hears: 'Forward, backward, left, and right direction tones.'
+            },
+            live_sonification: {
+                title: 'Live Sonification',
+                short: 'Live Sonification: pose tracking shapes the sound while the athlete moves.',
+                purpose: 'Converts tracked movement quality into sound during the rep.',
+                bestFor: 'Advanced testing when the camera angle is calibrated and pose confidence is high.',
+                hears: 'Subtle tones that respond to the tracked body position.'
+            },
+            coach_review: {
+                title: 'Coach Review',
+                short: 'Coach Review: keeps live sound quiet and saves sound prints for after reps.',
+                purpose: 'Keeps the athlete focused during the rep while preserving review data for the coach afterward.',
+                bestFor: 'Coach-led sessions, team testing, and reps where live sound would be too much.',
+                hears: 'Minimal live sound, with feedback mainly after the rep.'
+            },
+            reference: {
+                title: 'Reference Sound',
+                short: 'Reference: replay a good rep sound before the next try.',
+                purpose: 'Lets the athlete hear the pattern of a strong rep before trying again.',
+                bestFor: 'Practice after you have a saved good rep or target rep.',
+                hears: 'A saved sound print from a strong reference rep.'
+            },
+            compare: {
+                title: 'Compare Mode',
+                short: 'Compare: listen for timing differences between reps.',
+                purpose: 'Makes rep-to-rep timing differences easier to notice by sound.',
+                bestFor: 'Comparing left vs right, current vs best, or checking consistency across reps.',
+                hears: 'Comparison tones or saved sound prints from different reps.'
+            },
+            minimal: {
+                title: 'Minimal',
+                short: 'Minimal: short quiet sounds with fewer distractions.',
+                purpose: 'Keeps audio useful without crowding the athlete with feedback.',
+                bestFor: 'Glasses use in busy areas or athletes who only want the smallest cue possible.',
+                hears: 'Short, quiet cue sounds.'
+            }
         };
-        this.elements.trackerAudioModeInfo.textContent = descriptions[mode] || descriptions.cue_only;
+    }
+
+    openAudioModePopup() {
+        this.renderAudioModePopup(this.elements.trackerAudioMode.value);
+        this.elements.trackerAudioModePopup.classList.remove('hidden');
+        this.elements.trackerAudioModePopup.setAttribute('aria-hidden', 'false');
+        this.elements.closeTrackerAudioModeInfoBtn.focus();
+    }
+
+    closeAudioModePopup() {
+        this.elements.trackerAudioModePopup.classList.add('hidden');
+        this.elements.trackerAudioModePopup.setAttribute('aria-hidden', 'true');
+        this.elements.trackerAudioModeInfoBtn.focus();
+    }
+
+    renderAudioModePopup(activeMode) {
+        if (!this.elements.trackerAudioModePopupContent) return;
+        const details = this.getAudioModeDetails();
+        this.elements.trackerAudioModePopupContent.innerHTML = Object.entries(details).map(([mode, info]) => `
+            <article class="sound-mode-card ${mode === activeMode ? 'active' : ''}">
+                <h3>${info.title}</h3>
+                <p><strong>Purpose:</strong> ${info.purpose}</p>
+                <p><strong>Use for:</strong> ${info.bestFor}</p>
+                <p><strong>You hear:</strong> ${info.hears}</p>
+            </article>
+        `).join('');
     }
 
     updateStepStatus({ connected, cameraOn, cueActive } = {}) {
