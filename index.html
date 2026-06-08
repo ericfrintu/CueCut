@@ -78,8 +78,6 @@
                     <p><strong>Coach:</strong> <span id="feedbackCoachNote">Waiting for phone data...</span></p>
                 </div>
                 <nav class="nav-menu">
-                    <button id="saveReferenceSoundBtn" class="action-button focusable" tabindex="0">Save Ref Sound</button>
-                    <button id="playRepSoundBtn" class="action-button focusable" tabindex="0">Play Sound</button>
                     <button id="nextRepBtn" class="action-button focusable" tabindex="0">Next Rep</button>
                     <button id="endSessionBtn" class="action-button focusable" tabindex="0">End Session</button>
                 </nav>
@@ -152,12 +150,8 @@
                         <label>Sound Mode:</label>
                         <select id="audioModeSelect" class="focusable" tabindex="0">
                             <option value="off">Off</option>
-                            <option value="cue_only">Cue Only</option>
-                            <option value="live_sonification">Live Sonification</option>
-                            <option value="coach_review">Coach Review Only</option>
-                            <option value="reference">Reference Sound</option>
-                            <option value="compare">Compare Mode</option>
-                            <option value="minimal">Minimal</option>
+                            <option value="cue_only">Simple Cues</option>
+                            <option value="coach_review">Coach Review</option>
                         </select>
                     </div>
                     <div class="setting-item">
@@ -171,25 +165,6 @@
                     <div class="setting-item">
                         <label>Feedback Vol:</label>
                         <input id="feedbackVolume" type="number" min="0" max="1" step="0.05" class="focusable" tabindex="0">
-                    </div>
-                    <div class="setting-item">
-                        <label>Voice Labels:</label>
-                        <select id="voiceLabelsToggle" class="focusable" tabindex="0">
-                            <option value="off">Off</option>
-                            <option value="on">On</option>
-                        </select>
-                    </div>
-                    <div class="setting-item">
-                        <label>Sound Profile:</label>
-                        <select id="soundProfileSelect" class="focusable" tabindex="0">
-                            <option value="athlete">Athlete</option>
-                            <option value="coach">Coach</option>
-                            <option value="minimal">Minimal</option>
-                        </select>
-                    </div>
-                    <div class="setting-item">
-                        <label>Sonification:</label>
-                        <input id="sonificationSensitivity" type="number" min="0.5" max="2" step="0.1" class="focusable" tabindex="0">
                     </div>
                     <div class="setting-item">
                         <label>Timing Mode:</label>
@@ -303,6 +278,6 @@
         };
         window.dispatchEvent(new Event('cuecut:firebase-ready'));
     </script>
-    <script src="app.js?v=10"></script>
+    <script src="app.js?v=11"></script>
 </body>
 </html>

@@ -87,6 +87,7 @@ const MIN_TRACKING_POSE_SCORE = 0.25;
 const LANDMARK_VISIBLE_THRESHOLD = 0.2;
 const TRACKER_CUE_BANK = ['FRONT', 'BACK', 'LEFT', 'RIGHT'];
 const DEFAULT_FIELD_RADIUS_METERS = 15;
+const SIMPLE_AUDIO_MODES = ['off', 'cue_only', 'coach_review'];
 const MARKER_TYPES = ['center', 'forward', 'backward', 'left', 'right'];
 const MARKER_LABELS = {
     center: 'Center',
@@ -103,6 +104,12 @@ function getCueDisplayName(cue) {
         LEFT: 'LEFT',
         RIGHT: 'RIGHT'
     }[cue] || cue;
+}
+
+function normalizeAudioMode(mode) {
+    if (SIMPLE_AUDIO_MODES.includes(mode)) return mode;
+    if (mode === 'reference' || mode === 'compare') return 'coach_review';
+    return 'cue_only';
 }
 
 class SideTracker {
@@ -595,7 +602,7 @@ class SideTracker {
 
     updateAudioModeInfo(mode) {
         if (!this.elements.trackerAudioModeInfo) return;
-        const info = this.getAudioModeDetails()[mode] || this.getAudioModeDetails().cue_only;
+        const info = this.getAudioModeDetails()[normalizeAudioMode(mode)] || this.getAudioModeDetails().cue_only;
         this.elements.trackerAudioModeInfo.textContent = info.short;
     }
 
@@ -604,57 +611,29 @@ class SideTracker {
             off: {
                 title: 'Off',
                 short: 'Off: no sounds.',
-                purpose: 'Use this when the athlete only needs visual cues and silent timing.',
-                bestFor: 'Quiet testing, classroom demos, or sessions where the glasses audio is distracting.',
+                purpose: 'Silent mode. Use visual cues only.',
+                bestFor: 'Quiet testing, troubleshooting, or athletes who find audio distracting.',
                 hears: 'Nothing from the app.'
             },
             cue_only: {
-                title: 'Cue Only',
-                short: 'Cue Only: direction sounds only, best for normal reaction testing.',
-                purpose: 'Gives one clean sound cue so the athlete reacts fast without needing to read the display.',
-                bestFor: 'Default team testing, timing-focused reps, and most glasses sessions.',
-                hears: 'Forward, backward, left, and right direction tones.'
-            },
-            live_sonification: {
-                title: 'Live Sonification',
-                short: 'Live Sonification: pose tracking shapes the sound while the athlete moves.',
-                purpose: 'Converts tracked movement quality into sound during the rep.',
-                bestFor: 'Advanced testing when the camera angle is calibrated and pose confidence is high.',
-                hears: 'Subtle tones that respond to the tracked body position.'
+                title: 'Simple Cues',
+                short: 'Simple Cues: one clear direction sound, no extra feedback.',
+                purpose: 'Keeps the sound design simple: one sound tells the athlete where to move, then silence.',
+                bestFor: 'Default setting for reaction testing and most field reps.',
+                hears: 'Only the four direction tones: forward, backward, left, and right.'
             },
             coach_review: {
                 title: 'Coach Review',
-                short: 'Coach Review: keeps live sound quiet and saves sound prints for after reps.',
-                purpose: 'Keeps the athlete focused during the rep while preserving review data for the coach afterward.',
-                bestFor: 'Coach-led sessions, team testing, and reps where live sound would be too much.',
-                hears: 'Minimal live sound, with feedback mainly after the rep.'
-            },
-            reference: {
-                title: 'Reference Sound',
-                short: 'Reference: replay a good rep sound before the next try.',
-                purpose: 'Lets the athlete hear the pattern of a strong rep before trying again.',
-                bestFor: 'Practice after you have a saved good rep or target rep.',
-                hears: 'A saved sound print from a strong reference rep.'
-            },
-            compare: {
-                title: 'Compare Mode',
-                short: 'Compare: listen for timing differences between reps.',
-                purpose: 'Makes rep-to-rep timing differences easier to notice by sound.',
-                bestFor: 'Comparing left vs right, current vs best, or checking consistency across reps.',
-                hears: 'Comparison tones or saved sound prints from different reps.'
-            },
-            minimal: {
-                title: 'Minimal',
-                short: 'Minimal: short quiet sounds with fewer distractions.',
-                purpose: 'Keeps audio useful without crowding the athlete with feedback.',
-                bestFor: 'Glasses use in busy areas or athletes who only want the smallest cue possible.',
-                hears: 'Short, quiet cue sounds.'
+                short: 'Coach Review: direction cue first, then short post-rep feedback only.',
+                purpose: 'Uses sound as feedback after the movement instead of adding noise during the movement.',
+                bestFor: 'Coach-led sessions when you want the athlete to hear one takeaway after each rep.',
+                hears: 'Direction tones during the rep, plus a short result/coach cue after the rep.'
             }
         };
     }
 
     openAudioModePopup() {
-        this.renderAudioModePopup(this.elements.trackerAudioMode.value);
+        this.renderAudioModePopup(normalizeAudioMode(this.elements.trackerAudioMode.value));
         this.elements.trackerAudioModePopup.classList.remove('hidden');
         this.elements.trackerAudioModePopup.setAttribute('aria-hidden', 'false');
         this.elements.closeTrackerAudioModeInfoBtn.focus();
@@ -668,15 +647,18 @@ class SideTracker {
 
     renderAudioModePopup(activeMode) {
         if (!this.elements.trackerAudioModePopupContent) return;
+        activeMode = normalizeAudioMode(activeMode);
         const details = this.getAudioModeDetails();
-        this.elements.trackerAudioModePopupContent.innerHTML = Object.entries(details).map(([mode, info]) => `
+        this.elements.trackerAudioModePopupContent.innerHTML = `
+            <p class="sound-mode-note">Based on acoustic feedback research, CueCut keeps audio low-load: one clear cue during movement, and optional review after the rep.</p>
+            ${Object.entries(details).map(([mode, info]) => `
             <article class="sound-mode-card ${mode === activeMode ? 'active' : ''}">
                 <h3>${info.title}</h3>
                 <p><strong>Purpose:</strong> ${info.purpose}</p>
                 <p><strong>Use for:</strong> ${info.bestFor}</p>
                 <p><strong>You hear:</strong> ${info.hears}</p>
             </article>
-        `).join('');
+        `).join('')}`;
     }
 
     updateStepStatus({ connected, cameraOn, cueActive } = {}) {
@@ -775,7 +757,7 @@ class SideTracker {
         this.elements.trackerDelayMin.value = sessionSettings.delayMin ?? 1.0;
         this.elements.trackerDelayMax.value = sessionSettings.delayMax ?? 3.0;
         this.elements.trackerAudioSelect.value = sessionSettings.audioEnabled === false ? 'off' : 'on';
-        this.elements.trackerAudioMode.value = sessionSettings.audioMode || 'cue_only';
+        this.elements.trackerAudioMode.value = normalizeAudioMode(sessionSettings.audioMode || 'cue_only');
         this.updateAudioModeInfo(this.elements.trackerAudioMode.value);
         this.elements.trackerFieldRadius.value = sessionSettings.drillFieldRadiusMeters ?? DEFAULT_FIELD_RADIUS_METERS;
         this.elements.trackerCameraDistance.value = sessionSettings.cameraDistanceMeters ?? '';
@@ -810,7 +792,7 @@ class SideTracker {
         const cameraDistance = parseFloat(this.elements.trackerCameraDistance.value);
         const sessionSettings = {
             audioEnabled: this.elements.trackerAudioSelect.value === 'on',
-            audioMode: this.elements.trackerAudioMode.value || 'cue_only',
+            audioMode: normalizeAudioMode(this.elements.trackerAudioMode.value || 'cue_only'),
             timingMode: 'manual',
             speechRate: 1.0,
             sessionGoalReps: parseInt(this.elements.trackerGoalSelect.value, 10),

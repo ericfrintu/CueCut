@@ -486,6 +486,13 @@ body {
     padding: 14px;
 }
 
+.sound-mode-note {
+    margin: 0;
+    color: #d8ffd8;
+    font-size: 0.82rem;
+    line-height: 1.35;
+}
+
 .sound-mode-card {
     padding: 12px;
     border: 1px solid rgba(0, 255, 0, 0.22);

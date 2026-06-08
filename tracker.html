@@ -83,15 +83,11 @@
                 <label>
                     Sound Mode
                     <select id="trackerAudioMode">
-                        <option value="cue_only">Cue Only</option>
-                        <option value="live_sonification">Live Sonification</option>
-                        <option value="coach_review">Coach Review</option>
-                        <option value="reference">Reference</option>
-                        <option value="compare">Compare</option>
-                        <option value="minimal">Minimal</option>
                         <option value="off">Off</option>
+                        <option value="cue_only">Simple Cues</option>
+                        <option value="coach_review">Coach Review</option>
                     </select>
-                    <span id="trackerAudioModeInfo" class="tracker-setting-info">Cue Only: short direction sounds for reaction timing.</span>
+                    <span id="trackerAudioModeInfo" class="tracker-setting-info">Simple Cues: one clear direction sound, no extra feedback.</span>
                     <button id="trackerAudioModeInfoBtn" class="info-button tracker-info-button" type="button">Mode Info</button>
                 </label>
                 <label>
@@ -179,9 +175,9 @@
                 </tbody>
             </table>
         </section>
-        <p class="tracker-version">v21</p>
+        <p class="tracker-version">v22</p>
     </main>
 
-    <script type="module" src="tracker.js?v=21"></script>
+    <script type="module" src="tracker.js?v=22"></script>
 </body>
 </html>

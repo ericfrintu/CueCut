@@ -11,6 +11,13 @@ const CUE_BANK = ['FRONT', 'BACK', 'LEFT', 'RIGHT'];
 const DRILL_TYPE = '4_direction';
 const DEFAULT_FIELD_RADIUS_METERS = 15;
 const AUDIO_FEEDBACK_VERSION = 'sound-v1';
+const SIMPLE_AUDIO_MODES = ['off', 'cue_only', 'coach_review'];
+
+function normalizeAudioMode(mode) {
+    if (SIMPLE_AUDIO_MODES.includes(mode)) return mode;
+    if (mode === 'reference' || mode === 'compare') return 'coach_review';
+    return 'cue_only';
+}
 
 class RepData {
     constructor(cue, sessionId) {
@@ -289,7 +296,7 @@ class AudioFeedbackEngine {
         const cuePlayedAtMs = performance.now();
         const cuePlayedAt = new Date().toISOString();
 
-        if (!this.isAudioEnabled() || audioMode === 'coach_review') {
+        if (!this.isAudioEnabled()) {
             return this.buildCueMetadata(soundId, cuePlayedAt, cuePlayedAtMs, audioMode, null);
         }
 
@@ -300,10 +307,6 @@ class AudioFeedbackEngine {
             this.synth.cancel();
         }
         const audioLatencyEstimateMs = this.playTonePattern(pattern, this.getCueVolume());
-
-        if (this.settings.get('voiceLabelsEnabled') && audioMode !== 'minimal') {
-            setTimeout(() => this.playFeedback(String(cueText).toLowerCase(), { allowInCueOnly: true }), 90);
-        }
 
         return this.buildCueMetadata(soundId, cuePlayedAt, cuePlayedAtMs, audioMode, audioLatencyEstimateMs);
     }
@@ -322,7 +325,7 @@ class AudioFeedbackEngine {
     playFeedback(text, options = {}) {
         const audioMode = this.getAudioMode();
         if (!this.isAudioEnabled() || !this.isSupported) return;
-        if (!options.allowInCueOnly && ['cue_only', 'minimal'].includes(audioMode)) return;
+        if (!options.allowInCueOnly && audioMode !== 'coach_review') return;
 
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.rate = this.settings.get('speechRate') || 1.0;
@@ -334,36 +337,16 @@ class AudioFeedbackEngine {
     }
 
     playResultSound(resultType = 'neutral') {
-        if (!this.isAudioEnabled()) return;
-        if (['cue_only', 'reference'].includes(this.getAudioMode())) return;
-
-        const patterns = {
-            best: [
-                { frequency: 880, duration: 0.1, pan: 0 },
-                { frequency: 1320, duration: 0.16, pan: 0, delay: 0.11 }
-            ],
-            good: [{ frequency: 940, duration: 0.14, pan: 0 }],
-            neutral: [{ frequency: 620, duration: 0.12, pan: 0 }],
-            low_quality: [{ frequency: 260, duration: 0.18, pan: 0 }],
-            error: [
-                { frequency: 260, duration: 0.1, pan: 0 },
-                { frequency: 180, duration: 0.16, pan: 0, delay: 0.12 }
-            ]
-        };
-
-        this.playTonePattern(patterns[resultType] || patterns.neutral, this.getFeedbackVolume());
+        return;
     }
 
     playQualityWarning(reason = 'low_confidence') {
-        if (!this.isAudioEnabled()) return;
-        if (!['live_sonification', 'coach_review', 'compare'].includes(this.getAudioMode())) return;
-        const frequency = reason === 'low_confidence' ? 210 : 300;
-        this.playTonePattern([{ frequency, duration: 0.08, pan: 0 }], Math.min(0.25, this.getFeedbackVolume()));
+        return;
     }
 
     playSoundPrint(soundPrint) {
         if (!this.isAudioEnabled() || !soundPrint) return;
-        if (!['coach_review', 'reference', 'compare'].includes(this.getAudioMode())) return;
+        if (this.getAudioMode() !== 'coach_review') return;
 
         const curve = soundPrint.accelerationPitchCurve || [];
         const confidence = soundPrint.poseConfidenceOverTime || [];
@@ -417,10 +400,7 @@ class AudioFeedbackEngine {
     getCuePattern(cueText) {
         const patterns = {
             FRONT: [{ frequency: 1320, duration: 0.18, pan: 0 }],
-            BACK: [
-                { frequency: 520, duration: 0.12, pan: 0 },
-                { frequency: 420, duration: 0.14, pan: 0, delay: 0.17 }
-            ],
+            BACK: [{ frequency: 420, duration: 0.18, pan: 0 }],
             LEFT: [{ frequency: 720, duration: 0.16, pan: -1 }],
             RIGHT: [{ frequency: 720, duration: 0.16, pan: 1 }]
         };
@@ -473,7 +453,7 @@ class AudioFeedbackEngine {
     }
 
     getAudioMode() {
-        return this.settings.get('audioMode') || (this.settings.get('audioEnabled') ? 'cue_only' : 'off');
+        return normalizeAudioMode(this.settings.get('audioMode') || (this.settings.get('audioEnabled') ? 'cue_only' : 'off'));
     }
 
     getMasterVolume() {
@@ -774,8 +754,6 @@ class CueCutApp {
         document.getElementById('reactionFinishedBtn').addEventListener('click', () => this.finishReaction());
 
         // Feedback Screen
-        document.getElementById('saveReferenceSoundBtn').addEventListener('click', () => this.saveCurrentRepReferenceSound());
-        document.getElementById('playRepSoundBtn').addEventListener('click', () => this.playCurrentRepSound());
         document.getElementById('nextRepBtn').addEventListener('click', () => this.goToReady());
         document.getElementById('endSessionBtn').addEventListener('click', () => this.endSession());
 
@@ -809,9 +787,10 @@ class CueCutApp {
             this.settings.set('audioEnabled', e.target.value === 'on');
         });
 
+        this.settings.set('audioMode', normalizeAudioMode(this.settings.get('audioMode')));
         document.getElementById('audioModeSelect').value = this.settings.get('audioMode');
         document.getElementById('audioModeSelect').addEventListener('change', (e) => {
-            this.settings.set('audioMode', e.target.value);
+            this.settings.set('audioMode', normalizeAudioMode(e.target.value));
         });
 
         ['masterVolume', 'cueVolume', 'feedbackVolume'].forEach(id => {
@@ -822,20 +801,9 @@ class CueCutApp {
             });
         });
 
-        document.getElementById('voiceLabelsToggle').value = this.settings.get('voiceLabelsEnabled') ? 'on' : 'off';
-        document.getElementById('voiceLabelsToggle').addEventListener('change', (e) => {
-            this.settings.set('voiceLabelsEnabled', e.target.value === 'on');
-        });
-
-        document.getElementById('soundProfileSelect').value = this.settings.get('soundProfile');
-        document.getElementById('soundProfileSelect').addEventListener('change', (e) => {
-            this.settings.set('soundProfile', e.target.value);
-        });
-
-        document.getElementById('sonificationSensitivity').value = this.settings.get('liveSonificationSensitivity');
-        document.getElementById('sonificationSensitivity').addEventListener('change', (e) => {
-            this.settings.set('liveSonificationSensitivity', parseFloat(e.target.value));
-        });
+        this.settings.set('voiceLabelsEnabled', false);
+        this.settings.set('soundProfile', 'athlete');
+        this.settings.set('liveSonificationSensitivity', 1.0);
 
         document.getElementById('timingModeSelect').value = this.settings.get('timingMode');
         document.getElementById('timingModeSelect').addEventListener('change', (e) => {
@@ -1036,9 +1004,6 @@ class CueCutApp {
             masterVolume: this.settings.get('masterVolume'),
             cueVolume: this.settings.get('cueVolume'),
             feedbackVolume: this.settings.get('feedbackVolume'),
-            voiceLabelsEnabled: this.settings.get('voiceLabelsEnabled'),
-            soundProfile: this.settings.get('soundProfile'),
-            liveSonificationSensitivity: this.settings.get('liveSonificationSensitivity'),
             audioFeedbackVersion: AUDIO_FEEDBACK_VERSION
         };
     }
@@ -1111,13 +1076,10 @@ class CueCutApp {
         if (Number.isFinite(sessionSettings.drillFieldRadiusMeters)) cleaned.drillFieldRadiusMeters = sessionSettings.drillFieldRadiusMeters;
         if (sessionSettings.cameraDistanceMeters !== undefined) cleaned.cameraDistanceMeters = sessionSettings.cameraDistanceMeters;
         if (['auto', 'front_view', 'side_view'].includes(sessionSettings.cameraMode)) cleaned.cameraMode = sessionSettings.cameraMode;
-        if (['off', 'cue_only', 'live_sonification', 'coach_review', 'reference', 'compare', 'minimal'].includes(sessionSettings.audioMode)) cleaned.audioMode = sessionSettings.audioMode;
+        if (sessionSettings.audioMode) cleaned.audioMode = normalizeAudioMode(sessionSettings.audioMode);
         if (Number.isFinite(sessionSettings.masterVolume)) cleaned.masterVolume = sessionSettings.masterVolume;
         if (Number.isFinite(sessionSettings.cueVolume)) cleaned.cueVolume = sessionSettings.cueVolume;
         if (Number.isFinite(sessionSettings.feedbackVolume)) cleaned.feedbackVolume = sessionSettings.feedbackVolume;
-        if (typeof sessionSettings.voiceLabelsEnabled === 'boolean') cleaned.voiceLabelsEnabled = sessionSettings.voiceLabelsEnabled;
-        if (['athlete', 'coach', 'minimal'].includes(sessionSettings.soundProfile)) cleaned.soundProfile = sessionSettings.soundProfile;
-        if (Number.isFinite(sessionSettings.liveSonificationSensitivity)) cleaned.liveSonificationSensitivity = sessionSettings.liveSonificationSensitivity;
         if (Array.isArray(sessionSettings.enabledCues)) {
             const validCues = sessionSettings.enabledCues.filter(cue => CUE_BANK.includes(cue));
             if (validCues.length > 0) cleaned.enabledCues = validCues;
