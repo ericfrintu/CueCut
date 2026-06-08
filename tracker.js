@@ -70,8 +70,8 @@ const RUN_GUIDANCE = {
         reads: 'Reads acceleration posture, shin angle, first-step projection, and stride reach.'
     },
     BACK: {
-        placement: 'Backward camera mode: place camera beside the forward/backward lane.',
-        reads: 'Reads backpedal posture, braking shape, trunk angle, and knee bend.'
+        placement: 'Backward camera mode: place camera beside the turn-and-go lane.',
+        reads: 'Reads the turn, hip load, first push, and re-acceleration after the athlete turns to run backward.'
     },
     LEFT: {
         placement: 'Front camera mode: face the athlete for left/right movement.',
@@ -185,6 +185,8 @@ class SideTracker {
             markerTabs: document.querySelectorAll('.marker-tab'),
             autoDetectMarkersBtn: document.getElementById('autoDetectMarkersBtn'),
             clearMarkersBtn: document.getElementById('clearMarkersBtn'),
+            refreshSessionResultsBtn: document.getElementById('refreshSessionResultsBtn'),
+            trackerSessionResults: document.getElementById('trackerSessionResults'),
             runTabs: document.querySelectorAll('.run-tab')
         };
 
@@ -201,6 +203,7 @@ class SideTracker {
         this.elements.testSyncBtn.addEventListener('click', () => this.testSync());
         this.elements.startTrackingBtn.addEventListener('click', () => this.startTracking());
         this.elements.stopTrackingBtn.addEventListener('click', () => this.stopTracking());
+        this.elements.refreshSessionResultsBtn.addEventListener('click', () => this.loadSessionResults());
         this.elements.calibrateAngleBtn.addEventListener('click', () => this.startAngleCalibration());
         this.elements.sessionCodeInput.addEventListener('input', () => {
             this.elements.sessionCodeInput.value = this.elements.sessionCodeInput.value.replace(/\D/g, '').slice(0, 4);
@@ -271,10 +274,12 @@ class SideTracker {
             this.sessionId = sessionId;
             this.sessionCode = code;
             this.elements.testSyncBtn.disabled = false;
+            this.elements.refreshSessionResultsBtn.disabled = false;
             this.subscribeToSession();
             this.updateStepStatus({ connected: true });
             this.setTrackerState(this.isTracking ? 'camera on' : 'connected');
             this.setStatus(`Connected to session ${code}. ${this.isTracking ? 'Camera is ready.' : 'Start camera when ready.'}`);
+            this.loadSessionResults();
         } catch (error) {
             console.error(error);
             this.setStatus(`Connect failed: ${error.code || error.message || 'check Firebase rules'}.`);
@@ -323,6 +328,69 @@ class SideTracker {
 
         this.setTrackerState('test received', { testAt: Date.now() });
         this.setStatus('Test sent. Check glasses for tracker status.');
+    }
+
+    async loadSessionResults() {
+        if (!this.sessionId) {
+            this.elements.trackerSessionResults.innerHTML = '<p class="small-text">Connect a session to see saved reps and scores here.</p>';
+            return;
+        }
+
+        this.elements.trackerSessionResults.innerHTML = '<p class="small-text">Loading saved reps...</p>';
+
+        try {
+            const repsSnapshot = await getDocs(collection(this.db, 'sessions', this.sessionId, 'reps'));
+            const reps = repsSnapshot.docs
+                .map(repDoc => ({ id: repDoc.id, ...repDoc.data() }))
+                .sort((a, b) => Date.parse(a.timestamp || a.createdAt || 0) - Date.parse(b.timestamp || b.createdAt || 0));
+
+            if (!reps.length) {
+                this.elements.trackerSessionResults.innerHTML = '<p class="small-text">No saved reps yet. Finish a rep on the glasses first.</p>';
+                return;
+            }
+
+            const scored = reps.filter(rep => Number.isFinite(Number(rep.coachScore)));
+            const avgScore = scored.length
+                ? Math.round(scored.reduce((total, rep) => total + Number(rep.coachScore), 0) / scored.length)
+                : null;
+            const bestRep = [...scored].sort((a, b) => Number(b.coachScore) - Number(a.coachScore))[0] || null;
+
+            const rows = reps.map((rep, index) => {
+                const cue = getCueDisplayName(rep.cue || rep.direction || 'REP');
+                const reaction = Number.isFinite(Number(rep.reactionMs)) ? `${(Number(rep.reactionMs) / 1000).toFixed(2)}s` : '-';
+                const score = Number.isFinite(Number(rep.coachScore)) ? `${rep.coachScore}/100` : '-';
+                const fix = rep.coachCue || rep.coachFix || 'No coach feedback yet';
+                return `<tr>
+                    <td>${index + 1}</td>
+                    <td>${cue}</td>
+                    <td>${reaction}</td>
+                    <td>${score}</td>
+                    <td>${fix}</td>
+                </tr>`;
+            }).join('');
+
+            this.elements.trackerSessionResults.innerHTML = `
+                <div class="tracker-session-score">
+                    <strong>Session score: ${avgScore !== null ? `${avgScore}/100` : '-'}</strong>
+                    <span>Best: ${bestRep ? `${getCueDisplayName(bestRep.cue)} ${bestRep.coachScore}/100` : '-'}</span>
+                </div>
+                <table class="tracker-results-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Rep</th>
+                            <th>Time</th>
+                            <th>Score</th>
+                            <th>Feedback</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        } catch (error) {
+            console.warn('Load session results failed:', error);
+            this.elements.trackerSessionResults.innerHTML = '<p class="small-text">Could not load saved reps. Check Firebase rules.</p>';
+        }
     }
 
     subscribeToSession() {
@@ -1215,7 +1283,7 @@ class SideTracker {
         if (runType === 'FRONT') {
             ({ leanLabel, kneeLabel, baseLabel } = this.addAccelerationFeedback(issues, strengths, metrics));
         } else if (runType === 'BACK') {
-            ({ leanLabel, kneeLabel, baseLabel } = this.addBackpedalFeedback(issues, strengths, metrics));
+            ({ leanLabel, kneeLabel, baseLabel } = this.addBackwardTurnFeedback(issues, strengths, metrics));
         } else if (runType === 'LEFT' || runType === 'RIGHT') {
             ({ leanLabel, kneeLabel, baseLabel } = this.addCuttingFeedback(issues, strengths, metrics, runType));
         } else {
@@ -1321,30 +1389,30 @@ class SideTracker {
         return { leanLabel, kneeLabel, baseLabel };
     }
 
-    addBackpedalFeedback(issues, strengths, metrics) {
-        let leanLabel = 'controlled backpedal';
-        let kneeLabel = 'hips loaded';
-        let baseLabel = 'feet under hips';
+    addBackwardTurnFeedback(issues, strengths, metrics) {
+        let leanLabel = 'good turn angle';
+        let kneeLabel = 'loaded turn';
+        let baseLabel = 'push step close';
 
         if (metrics.trunkLeanDeg < 6) {
             leanLabel = 'too upright';
-            this.addIssue(issues, 'upright-backpedal', 'Backpedal posture is too upright', 'Keep the hips slightly lower and chest controlled so the first steps do not pop straight up.', 'Hips low, chest quiet.', 'Backpedal posture holds', 4, metrics.poseScore, 'first steps');
+            this.addIssue(issues, 'upright-turn-go', 'Turn-and-go posture is too upright', 'After the turn, keep the chest angled so the first push projects into the sprint instead of popping up.', 'Turn, load, then push out.', 'Drop-step turn-and-go accelerations', 4, metrics.poseScore, 'turn and first push');
         } else {
-            strengths.push('controlled trunk angle');
+            strengths.push('good body angle after turn');
         }
 
         if (metrics.kneeAngleDeg > 165) {
-            kneeLabel = 'legs too tall';
-            this.addIssue(issues, 'tall-backpedal', 'Backpedal steps look too tall', 'Load the hips and knees so the athlete can brake and redirect without standing up.', 'Stay loaded while moving back.', 'Backpedal-to-stick reps', 4, metrics.poseScore, 'first steps');
+            kneeLabel = 'turn too tall';
+            this.addIssue(issues, 'tall-turn-go', 'Turn happens too tall', 'Load the hips and knees during the turn so the athlete can push out into acceleration.', 'Drop the hip, then drive.', 'Drop-step turn-and-go accelerations', 4, metrics.poseScore, 'turn and first push');
         } else {
-            strengths.push('loaded backpedal position');
+            strengths.push('loaded hip position on turn');
         }
 
         if (metrics.footReachPct > 120) {
-            baseLabel = 'reaching back';
-            this.addIssue(issues, 'backpedal-reach', 'Feet appear to reach away from the hips', 'Keep steps shorter and quicker so the athlete can stop or redirect at the cone.', 'Quick feet under hips.', 'Short backpedal cadence reps', 3, metrics.poseScore, 'foot strike');
+            baseLabel = 'reaching first step';
+            this.addIssue(issues, 'turn-go-reach', 'First push step reaches away from the hips', 'After the turn, keep the first step closer so the athlete can push the ground back and accelerate.', 'Step under, then push back.', 'Drop-step to 5-yard sprint', 3, metrics.poseScore, 'first push');
         } else {
-            strengths.push('feet stay close enough to recover');
+            strengths.push('first push stays close enough to accelerate');
         }
 
         return { leanLabel, kneeLabel, baseLabel };
@@ -1421,7 +1489,7 @@ class SideTracker {
 
     defaultDrill(runType) {
         if (runType === 'FRONT') return 'Wall-drive marches';
-        if (runType === 'BACK') return 'Backpedal-to-stick reps';
+        if (runType === 'BACK') return 'Drop-step turn-and-go accelerations';
         if (runType === 'LEFT' || runType === 'RIGHT') return 'Slow plant-and-exit cuts';
         return 'Controlled technique rep';
     }
@@ -1536,6 +1604,7 @@ class SideTracker {
                 }
             }, { merge: true });
             this.setStatus('Final coach feedback sent to glasses.');
+            this.loadSessionResults();
         } catch (error) {
             console.warn('Final feedback save failed:', error);
             this.setStatus('Final coach feedback save failed.');
@@ -1618,7 +1687,7 @@ class SideTracker {
         const defaultCue = runType === 'FRONT'
             ? 'Push back through the ground for the first three steps.'
             : runType === 'BACK'
-                ? 'Stay loaded and keep quick steps under the hips.'
+                ? 'Turn first, load the hip, then push out into the sprint.'
             : 'Clean up the plant before you exit.';
         const defaultDrill = this.defaultDrill(runType);
 
@@ -1626,7 +1695,7 @@ class SideTracker {
             runType,
             metrics,
             feedback: {
-                message: topIssue ? `${topIssue.fix} (${topIssue.bestMoment}).` : 'Good athletic position for this camera view.',
+                message: topIssue ? topIssue.fix : 'Good athletic position for this camera view.',
                 good: strengths.length ? strengths.join(', ') : 'camera view',
                 fix: topIssue ? topIssue.fix : 'keep same shape',
                 cue: topIssue ? topIssue.cue : defaultCue,

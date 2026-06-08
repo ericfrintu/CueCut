@@ -99,34 +99,6 @@
                     <p>Main Focus: <span id="summaryCoachFocus">—</span></p>
                 </div>
                 <div id="summaryChart" class="summary-chart"></div>
-                <div class="sound-feedback-form">
-                    <p><strong>Sound Feedback</strong></p>
-                    <label>Helpful?
-                        <select id="soundHelpfulSelect" class="focusable" tabindex="0">
-                            <option value="">Choose</option>
-                            <option value="yes">Yes</option>
-                            <option value="somewhat">Somewhat</option>
-                            <option value="no">No</option>
-                        </select>
-                    </label>
-                    <label>Distracting?
-                        <select id="soundDistractingSelect" class="focusable" tabindex="0">
-                            <option value="">Choose</option>
-                            <option value="no">No</option>
-                            <option value="somewhat">Somewhat</option>
-                            <option value="yes">Yes</option>
-                        </select>
-                    </label>
-                    <label>Best Use
-                        <select id="soundUseSelect" class="focusable" tabindex="0">
-                            <option value="">Choose</option>
-                            <option value="live">Live</option>
-                            <option value="after_rep">After rep</option>
-                            <option value="coach_review">Coach review</option>
-                        </select>
-                    </label>
-                    <button id="saveSoundFeedbackBtn" class="back-button focusable" tabindex="0">Save Sound Feedback</button>
-                </div>
                 <nav class="nav-menu">
                     <button id="exportDataBtn" class="action-button focusable" tabindex="0">Export CSV</button>
                     <button id="summaryHomeBtn" class="action-button focusable" tabindex="0">Home</button>
@@ -278,6 +250,6 @@
         };
         window.dispatchEvent(new Event('cuecut:firebase-ready'));
     </script>
-    <script src="app.js?v=11"></script>
+    <script src="app.js?v=12"></script>
 </body>
 </html>

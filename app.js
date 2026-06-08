@@ -760,7 +760,10 @@ class CueCutApp {
         // Summary Screen
         document.getElementById('exportDataBtn').addEventListener('click', () => this.exportCurrentSessionData());
         document.getElementById('summaryHomeBtn').addEventListener('click', () => this.goToHome());
-        document.getElementById('saveSoundFeedbackBtn').addEventListener('click', () => this.saveSessionSoundFeedback());
+        const saveSoundFeedbackBtn = document.getElementById('saveSoundFeedbackBtn');
+        if (saveSoundFeedbackBtn) {
+            saveSoundFeedbackBtn.addEventListener('click', () => this.saveSessionSoundFeedback());
+        }
 
         // Data View Screen
         document.getElementById('dataViewExportBtn').addEventListener('click', () => this.exportCurrentDataView());
@@ -1387,12 +1390,11 @@ class CueCutApp {
         }
 
         const feedback = this.currentCoachFeedback.feedback;
-        const runType = this.currentCoachFeedback.runType || this.currentCoachFeedback.cue || 'run';
+        const runType = CueCutApp.getCueDisplayName(this.currentCoachFeedback.runType || this.currentCoachFeedback.cue || 'run');
         const cue = feedback.cue || feedback.fix || feedback.message;
         const score = Number.isFinite(feedback.score) ? ` ${feedback.score}/100.` : '';
-        const moment = feedback.issues?.[0]?.moment ? ` ${feedback.issues[0].moment}.` : '';
 
-        coachEl.textContent = `${runType}:${score} ${cue}${moment}`;
+        coachEl.textContent = `${runType}:${score} ${cue}`;
     }
 
     speakCoachFeedback(latestFeedback) {
@@ -1481,11 +1483,15 @@ class CueCutApp {
         const fatigue = this.calculateFatigue(reps);
         const trackedReps = reps.filter(rep => rep.coachFix).length;
         const coachSummary = this.calculateCoachSummary(reps);
+        const coachScores = reps.map(rep => Number(rep.coachScore)).filter(Number.isFinite);
+        const sessionCoachScore = coachScores.length
+            ? Math.round(coachScores.reduce((total, score) => total + score, 0) / coachScores.length)
+            : null;
         const setupRep = [...reps].reverse().find(rep => rep.drillFieldRadiusMeters || rep.cameraDistanceMeters);
         const drillFieldRadiusMeters = setupRep?.drillFieldRadiusMeters || this.settings.get('drillFieldRadiusMeters') || DEFAULT_FIELD_RADIUS_METERS;
         const cameraDistanceMeters = setupRep?.cameraDistanceMeters || this.settings.get('cameraDistanceMeters') || '';
 
-        return { totalReps, trackedReps, avgReactionMs, bestReactionMs, avgMovementMs, fatigue, coachSummary, drillFieldRadiusMeters, cameraDistanceMeters };
+        return { totalReps, trackedReps, avgReactionMs, bestReactionMs, avgMovementMs, fatigue, coachSummary, sessionCoachScore, drillFieldRadiusMeters, cameraDistanceMeters };
     }
 
     showSummary(stats, sessionReps) {
@@ -1532,11 +1538,11 @@ class CueCutApp {
         const bestText = bestRep ? ` Best tracked rep: ${CueCutApp.getCueDisplayName(bestRep.cue)} ${bestRep.coachScore}/100.` : '';
 
         if (!mainIssue) {
-            return { focus: `Main focus: repeat the best body shape.${bestText}` };
+            return { focus: `repeat the best body shape.${bestText}` };
         }
 
         return {
-            focus: `Main focus: ${mainIssue[0]} (${mainIssue[1]}/${tracked.length} tracked reps).${bestText}`
+            focus: `${mainIssue[0]} (${mainIssue[1]}/${tracked.length} tracked reps).${bestText}`
         };
     }
 
@@ -1671,9 +1677,9 @@ class CueCutApp {
             <button id="backToSessionsBtn" class="back-button focusable" tabindex="0">Back to Sessions</button>
             <div>
                 <strong>${this.formatSessionDate(sessionId, sessionReps)}</strong><br>
-                Reps: ${stats.totalReps} | Tracked: ${stats.trackedReps}/${stats.totalReps}<br>
+                Reps: ${stats.totalReps} | Tracked: ${stats.trackedReps}/${stats.totalReps} | Score: ${stats.sessionCoachScore !== null ? `${stats.sessionCoachScore}/100` : '-'}<br>
                     Fatigue: ${stats.fatigue}<br>
-                    Focus: ${stats.coachSummary?.focus || 'No coach data yet'}
+                    Main Focus: ${stats.coachSummary?.focus || 'No coach data yet'}
             </div>
         </div>`;
 

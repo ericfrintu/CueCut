@@ -1079,6 +1079,38 @@ body {
     color: #aaa;
 }
 
+.tracker-session-results {
+    overflow-x: auto;
+}
+
+.tracker-session-score {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    color: #d8ffd8;
+    font-size: 0.85rem;
+}
+
+.tracker-results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+}
+
+.tracker-results-table th,
+.tracker-results-table td {
+    padding: 8px;
+    border-top: 1px solid rgba(0, 255, 0, 0.18);
+    text-align: left;
+    vertical-align: top;
+}
+
+.tracker-results-table th {
+    color: #00ff00;
+}
+
 @media (max-width: 640px) {
     .tracker-app {
         padding: 16px;
